@@ -1,0 +1,43 @@
+{
+  "_readme": "THE place to tune numbers: hero, weapons, enemies, shop prices, coins, apples. Everything in src/ reads from here (src/data/enemies.js, weapons.js, upgrades.js and src/config.js add only the non-numeric parts: names, looks, behaviors). Distances are blocks (edge-to-edge for ranges), times are seconds, armor is the fraction of each hit absorbed. Read it from code with stat('enemies.grunt.maxHealth'); print it with `npm run stats`.",
+  "hero": {
+    "maxHealth": 100,
+    "speed": 5.5,
+    "radius": 0.4,
+    "invulnAfterHit": 0.6,
+    "armor": 0,
+    "crit": { "chance": 0.01, "multiplier": 1.5 },
+    "autoAimExtra": 1.5
+  },
+  "weapons": {
+    "sword": { "damage": 10, "range": 2.0, "cooldown": 0.45, "swingTime": 0.25, "knockback": 4 }
+  },
+  "enemies": {
+    "grunt": { "maxHealth": 40, "armor": 0, "speed": 2.8, "radius": 0.45, "damage": 10, "attackRange": 1.0, "windup": 0.45, "cooldown": 0.9, "stagger": 0.4 },
+    "barchernarcher": {
+      "maxHealth": 120, "armor": 0, "speed": 3.2, "radius": 0.45, "damage": 25, "attackRange": 1.0, "windup": 0.8, "cooldown": 1.5, "stagger": 0.4, "poise": 2,
+      "nova": { "range": 2.0, "damage": 10, "accuracy": 0.5, "windup": 0.5, "cooldown": 1.8 }
+    },
+    "neelysomnaly": { "maxHealth": 200, "armor": 0, "radius": 0.45, "damage": 5, "ramp": 1.15, "rampHits": 4, "touchMargin": 0.15, "resetAfter": 1.5 },
+    "bowmaster": { "maxHealth": 320, "armor": 0.25, "speed": 1.9, "radius": 0.48, "damage": 8, "attackRange": 8, "windup": 0.9, "cooldown": 1.8, "stagger": 0.3, "poise": 3, "arrowSpeed": 10 }
+  },
+  "upgrades": {
+    "sharpen": { "add": 0.2, "costs": [200, 400, 700] },
+    "luck": { "add": 0.04, "costs": [150, 300, 500] },
+    "power": { "add": 0.25, "costs": [150, 300, 500] },
+    "heart": { "add": 20, "costs": [200, 400, 700] },
+    "apple": { "add": 0.1, "costs": [100, 250, 400] }
+  },
+  "difficulty": {
+    "default": 2,
+    "steps": [
+      { "name": "Very easy", "enemyDamage": 0.5, "enemyHealth": 0.75 },
+      { "name": "Easy", "enemyDamage": 0.75, "enemyHealth": 0.9 },
+      { "name": "Normal", "enemyDamage": 1, "enemyHealth": 1 },
+      { "name": "Hard", "enemyDamage": 1.25, "enemyHealth": 1.15 },
+      { "name": "Very hard", "enemyDamage": 1.5, "enemyHealth": 1.3 }
+    ]
+  },
+  "coins": { "spread": 0.1, "pickupRadius": 1.0, "magnetRadius": 2.6, "magnetSpeed": 7 },
+  "apples": { "healFraction": 0.25, "pickupRadius": 1.0, "firstDelay": 8, "interval": 14, "maxOnGround": 2, "maxDropsOnGround": 4, "enemyDropChance": 0.25 }
+}

@@ -1,0 +1,188 @@
+import * as THREE from 'three';
+import { angleDiff, lerp } from '../logic/math.js';
+import { createRock, createSunMan } from './mobs.js';
+import { createBlocky, createBow, createQuiver, createSword, setEmissive } from './blocky.js';
+
+const RAISED_ARM = -2.4; // overhead, ready to swing
+const IDLE_ARM = -0.35;
+
+/**
+ * Drives one blocky character from a sim object ({x, z, facing, state?}).
+ * Everything here is cosmetic: walking, swinging, hit flashes, the death fall.
+ */
+export class CharacterView {
+  constructor(look, { sword = false, bow = false, healthBar = false, camera = null } = {}) {
+    this.model = look.model === 'sun' ? createSunMan(look) : look.model === 'rock' ? createRock() : createBlocky(look);
+    this.clock = 0;
+    this.root = this.model.root;
+    this.camera = camera;
+    this.walkPhase = 0;
+    this.swingDuration = 0;
+    this.swingT = 1; // 1 = not swinging
+    this.flashT = 0;
+    this.dying = false;
+    this.deathT = 0;
+    this.finished = false;
+    this.lastX = null;
+    this.lastZ = null;
+    this.hasSword = sword;
+    this.hasBow = bow;
+    this.scale = look.scale ?? 1;
+
+    if (sword) this.model.armR.add(createSword());
+    if (bow) {
+      this.model.armL.add(createBow());
+      this.model.root.add(createQuiver());
+    }
+
+    this.bar = null;
+    if (healthBar) this.bar = createHealthBar();
+  }
+
+  addTo(parent) {
+    parent.add(this.root);
+    if (this.bar) parent.add(this.bar.group);
+  }
+
+  removeFrom(parent) {
+    parent.remove(this.root);
+    if (this.bar) parent.remove(this.bar.group);
+  }
+
+  startSwing(duration) {
+    this.swingDuration = duration;
+    this.swingT = 0;
+  }
+
+  flash() {
+    this.flashT = 0.15;
+  }
+
+  die() {
+    this.dying = true;
+    this.deathT = 0;
+  }
+
+  /** @param sim the sim object, @param healthFraction 0..1 for the floating bar */
+  sync(sim, dt, healthFraction = 1) {
+    const root = this.root;
+    this.clock += dt;
+    this.model.animate?.(this.clock, sim);
+    root.position.x = sim.x;
+    root.position.z = sim.z;
+    if (!this.dying) root.position.y = this.groundY ?? 0; // set by WorldView (hills)
+
+    // Turn toward facing the short way, quickly but not instantly.
+    if (!this.dying) {
+      const diff = angleDiff(root.rotation.y, sim.facing);
+      root.rotation.y += diff * Math.min(1, 16 * dt);
+    }
+
+    // Walk speed from actual movement, so knockback and pushes animate sensibly too.
+    let speed = 0;
+    if (this.lastX !== null && dt > 0) speed = Math.hypot(sim.x - this.lastX, sim.z - this.lastZ) / dt;
+    this.lastX = sim.x;
+    this.lastZ = sim.z;
+    const move = Math.min(1, speed / 4);
+    this.walkPhase += speed * dt * 2.2;
+
+    const { legL, legR, armL, armR } = this.model;
+    const swing = Math.sin(this.walkPhase) * 0.8 * move;
+    legL.rotation.x = swing;
+    legR.rotation.x = -swing;
+    armL.rotation.x = -swing * 0.8;
+    armR.rotation.x = this.hasSword ? IDLE_ARM + swing * 0.3 : swing * 0.8;
+
+    // Attack swing (hero) and telegraph (enemy windup).
+    if (this.swingT < 1) {
+      this.swingT = Math.min(1, this.swingT + dt / Math.max(0.01, this.swingDuration));
+      const eased = 1 - (1 - this.swingT) * (1 - this.swingT);
+      const angle = lerp(RAISED_ARM, -0.2, eased);
+      armR.rotation.x = angle;
+      if (!this.hasSword && !this.hasBow) armL.rotation.x = angle;
+    } else if (sim.state === 'windup') {
+      armR.rotation.x = RAISED_ARM;
+      armL.rotation.x = RAISED_ARM;
+    }
+
+    // Archers hold the bow out and draw the string back during the windup.
+    if (this.hasBow) {
+      armL.rotation.x = -1.45;
+      if (sim.state === 'windup') armR.rotation.x = -1.75;
+      else if (this.swingT >= 1) armR.rotation.x = swing * 0.5 - 0.3;
+    }
+
+    // Flash: red pulse while an enemy winds up, white-hot blink when hit.
+    this.flashT = Math.max(0, this.flashT - dt);
+    if (this.flashT > 0) setEmissive(this.model, '#ffffff', 0.9);
+    else if (sim.state === 'windup') setEmissive(this.model, '#ff2200', 0.35 + 0.25 * Math.sin(performance.now() / 40));
+    else setEmissive(this.model, '#000000', 0);
+
+    if (this.dying) this.updateDeath(dt);
+    this.updateBar(sim, healthFraction);
+  }
+
+  updateDeath(dt) {
+    this.deathT += dt;
+    const t = Math.min(1, this.deathT / 0.5);
+    this.root.rotation.x = -t * (Math.PI / 2); // fall onto its back
+    this.root.position.y = (this.groundY ?? 0) - t * 0.15;
+    if (this.deathT >= 0.9) this.finished = true;
+  }
+
+  updateBar(sim, fraction) {
+    if (!this.bar) return;
+    const { group, fill } = this.bar;
+    group.visible = !this.dying;
+    group.position.set(sim.x, 2.5 * this.scale + (this.groundY ?? 0), sim.z);
+    group.scale.setScalar(this.scale);
+    if (this.camera) group.quaternion.copy(this.camera.quaternion);
+    const f = Math.max(0.001, fraction);
+    fill.scale.x = f;
+    fill.position.x = -(1 - f) * 0.5;
+    fill.material.color.set(f > 0.5 ? '#52d65c' : f > 0.25 ? '#f0c040' : '#e04545');
+  }
+
+  dispose() {
+    // Dispose everything reachable from the model (body parts and the sword), not a hand-kept list.
+    this.root.traverse((o) => {
+      if (o.isSprite) {
+        o.material.map?.dispose();
+        o.material.dispose();
+        return;
+      }
+      if (!o.isMesh) return;
+      o.geometry.dispose();
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        m.map?.dispose();
+        m.dispose();
+      }
+    });
+    if (this.bar) {
+      this.bar.group.traverse((o) => {
+        if (o.isMesh) {
+          o.geometry.dispose();
+          o.material.dispose();
+        }
+      });
+    }
+  }
+}
+
+function createHealthBar() {
+  const group = new THREE.Group();
+  const bg = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.05, 0.17),
+    new THREE.MeshBasicMaterial({ color: '#111111', depthTest: false, transparent: true, opacity: 0.8 }),
+  );
+  const fill = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 0.11),
+    // Transparent so it sorts in the same pass as the background and renderOrder decides who is on top.
+    new THREE.MeshBasicMaterial({ color: '#52d65c', depthTest: false, transparent: true }),
+  );
+  fill.position.z = 0.001;
+  bg.renderOrder = 10;
+  fill.renderOrder = 11;
+  group.add(bg, fill);
+  return { group, fill };
+}

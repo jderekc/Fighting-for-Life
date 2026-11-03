@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fighting for Life</title>
+<style>
+/*FONTS*/
+  :root { --font: "Trebuchet MS", "Segoe UI", system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9fd3f5; font-family: var(--font); user-select: none; }
+  #app { position: fixed; inset: 0; }
+  #app canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #hud[hidden] { display: none; }
+  .hp-wrap { position: absolute; top: 18px; left: 18px; display: flex; align-items: center; gap: 12px; }
+  .apple-icon { width: 34px; height: 34px; background: #e03030; border: 3px solid #7a1414; position: relative; }
+  .apple-icon::before { content: ""; position: absolute; left: 12px; top: -10px; width: 6px; height: 9px; background: #6b4423; }
+  .apple-icon::after { content: ""; position: absolute; left: 18px; top: -9px; width: 12px; height: 6px; background: #4cc04c; }
+  #hp-bar { position: relative; width: min(46vw, 380px); height: 36px; background: #1a1a1a; border: 4px solid #000; box-shadow: 0 3px 0 rgba(0,0,0,.35); }
+  #hp-fill { height: 100%; width: 100%; background: #52d65c; transition: width .15s ease-out, background-color .2s; }
+  #hp-fill[data-band="yellow"] { background: #f0c040; }
+  #hp-fill[data-band="red"] { background: #e04545; }
+  #hp-text { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; color: #fff; font-size: 18px; text-shadow: 0 2px 0 #000; letter-spacing: 1px; }
+  #hp-bar.bounce { animation: pop .3s ease-out; }
+  @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.1); } 100% { transform: scale(1); } }
+  .coin-wrap { position: absolute; top: 66px; left: 18px; display: flex; align-items: center; gap: 12px; color: #ffe14d; font-weight: 900; font-size: 26px; text-shadow: 0 2px 0 #000, 0 0 6px rgba(0,0,0,.4); }
+  .coin-icon { width: 30px; height: 30px; margin-left: 2px; background: #ffd23a; border: 4px solid #8a6200; border-radius: 50%; box-shadow: inset 0 0 0 3px #ffe98a; }
+  .coin-wrap.bounce { animation: pop .3s ease-out; transform-origin: left center; }
+  .hud-right { position: absolute; top: 18px; right: 18px; text-align: right; color: #fff; font-weight: 800; text-shadow: 0 2px 0 #000, 0 0 6px rgba(0,0,0,.4); }
+  #level-name { font-size: 18px; opacity: .9; }
+  #enemy-count { font-size: 26px; }
+
+  #floaters { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .floater { position: fixed; transform: translate(-50%, -50%); font-weight: 900; font-size: 30px; text-shadow: 0 3px 0 #000, 0 0 8px rgba(0,0,0,.5); }
+  .floater.hit { color: #fff; }
+  .floater.hurt { color: #ff5a5a; font-size: 34px; }
+  .floater.crit { color: #ffe14d; font-size: 42px; }
+  .floater.coin { color: #ffd23a; font-size: 26px; }
+  .floater.big { color: #ffb347; font-size: 40px; letter-spacing: 2px; }
+  .floater.heal { color: #7dff7d; font-size: 34px; }
+
+  #shop { position: fixed; inset: 0; display: grid; align-items: center; justify-items: end; pointer-events: none; padding: 16px 24px; }
+  #shop[hidden] { display: none; }
+  .shop-panel { pointer-events: auto; width: min(94vw, 470px); background: rgba(35, 24, 70, .92); border: 5px solid #000; box-shadow: 0 8px 0 rgba(0,0,0,.4); color: #fff; padding: 14px 18px 12px; }
+  .shop-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .shop-head h2 { margin: 0; font-size: 30px; color: #ffe14d; text-shadow: 0 3px 0 #000; }
+  .shop-coins { font-size: 26px; font-weight: 900; color: #ffd23a; text-shadow: 0 2px 0 #000; }
+  .shop-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 8px 0; border-top: 2px solid rgba(255,255,255,.15); }
+  .shop-name { font-weight: 900; font-size: 19px; }
+  .shop-blurb { font-size: 14px; opacity: .8; }
+  .shop-pips { font-size: 20px; letter-spacing: 3px; color: #ffd23a; }
+  .shop-buy { font: inherit; font-weight: 900; font-size: 18px; padding: 8px 14px; min-width: 96px; color: #fff; background: #3fae49; border: 4px solid #000; box-shadow: 0 4px 0 #000; cursor: pointer; }
+  .shop-buy[data-affordable="no"] { background: #6b6b7a; }
+  .shop-buy:disabled { background: #2a2a38; color: #888; cursor: default; box-shadow: none; }
+  .shop-buy:not(:disabled):active { transform: translateY(3px); box-shadow: 0 1px 0 #000; }
+  .shop-msg { min-height: 24px; margin-top: 6px; font-weight: 800; color: #ffb3b3; }
+  .shop-hint { font-size: 13px; opacity: .75; }
+  #fade { position: fixed; inset: 0; background: #05060c; opacity: 1; pointer-events: none; }
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: min(16px, 2.2vh); text-align: center; color: #fff; background: rgba(15, 30, 50, .62); padding: 24px; }
+  .screen[hidden] { display: none; }
+  /* Screens: logo font (Cormorant Unicase, thin and tight) for the title and headings, Almendra for readable body text.
+     Logo colour is warm parchment with a thin dark edge and a soft glow, so it stays legible over the misty blue-green flyover. */
+  :root { --logo-font: "Cormorant Unicase", "Palatino Linotype", Georgia, serif; --body-font: "Almendra", "Palatino Linotype", Georgia, serif;
+          --parchment: #f4e7c6; --ink: #1a1208; }
+  .screen { font-family: var(--body-font); color: var(--parchment); }
+  .screen h1 {
+    margin: 0; font-family: var(--logo-font); font-weight: 700; font-size: clamp(34px, min(8vw, 13vh), 92px); letter-spacing: -.012em; line-height: 1.05;
+    background: linear-gradient(#fffaf0 0%, #f1dfb3 55%, #d8b674 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 0 14px rgba(255, 226, 160, .42)) drop-shadow(0 5px 9px rgba(0, 0, 0, .85));
+  }
+  .screen.title { background: radial-gradient(ellipse at 50% 45%, rgba(8, 10, 26, .08) 25%, rgba(8, 10, 26, .62) 100%); }
+  .screen.title h1 { font-size: clamp(34px, min(8.6vw, 14vh), 110px); }
+  .screen .sub { margin: 0; font-size: clamp(17px, min(3vw, 4.4vh), 28px); font-weight: 700; letter-spacing: .01em; text-shadow: 0 2px 0 var(--ink), 0 2px 10px #000; }
+  .screen .big-button {
+    font-family: var(--logo-font); font-weight: 700; font-size: 30px; letter-spacing: .02em; padding: 10px 40px 12px; color: var(--parchment);
+    background: linear-gradient(#7f5429, #55341a); border: 4px solid var(--ink); box-shadow: inset 0 0 0 2px rgba(244, 231, 198, .22), 0 6px 0 var(--ink);
+    text-shadow: 0 2px 0 var(--ink);
+  }
+  .screen .big-button:hover { background: linear-gradient(#97652f, #66401f); }
+  .screen .big-button:active { box-shadow: inset 0 0 0 2px rgba(244, 231, 198, .22), 0 2px 0 var(--ink); }
+  .screen .difficulty { display: flex; flex-direction: column; gap: 6px; align-items: center; font-weight: 700; font-size: 20px; text-shadow: 0 2px 0 var(--ink), 0 2px 8px #000; }
+  .screen .difficulty { --bar: linear-gradient(90deg, #7f8794 0%, #b9a566 35%, #ff9a2a 70%, #ff2a10 100%); }
+  .screen .difficulty input { -webkit-appearance: none; appearance: none; width: min(78vw, 380px); height: 92px; background: transparent; cursor: pointer; margin: 4px 0 0; }
+  .screen .difficulty input:focus-visible { outline: 2px solid #e9cf8a; outline-offset: 4px; border-radius: 8px; }
+  /* the bar: the lit part (up to the knob) shows the dull-to-flame gradient, the rest is dark */
+  .screen .difficulty input::-webkit-slider-runnable-track { height: 16px; border-radius: 8px; border: 3px solid var(--ink); box-shadow: 0 0 10px rgba(255, 80, 20, calc(var(--hot, 0) * .6)); background: linear-gradient(90deg, transparent var(--p, 50%), rgba(20, 14, 8, .62) var(--p, 50%)), var(--bar); }
+  .screen .difficulty input::-moz-range-track { height: 10px; border-radius: 8px; border: 3px solid var(--ink); background: linear-gradient(90deg, transparent var(--p, 50%), rgba(20, 14, 8, .62) var(--p, 50%)), var(--bar); }
+  /* the knob: the current difficulty emblem */
+  .screen .difficulty input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 132px; height: 92px; margin-top: -40px; border: 0; background: var(--knob) center / contain no-repeat; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .75)); }
+  .screen .difficulty input::-moz-range-thumb { width: 132px; height: 92px; border: 0; border-radius: 0; background: var(--knob) center / contain no-repeat; }
+  .screen .difficulty[data-step="4"] { --hot: 1; }
+  .screen .hint { margin: 0; font-size: clamp(13px, 2.4vh, 16px); opacity: .85; text-shadow: 0 2px 0 var(--ink), 0 2px 8px #000; }
+  .big-button { font: inherit; font-weight: 900; font-size: 30px; padding: 14px 44px; color: #fff; background: #3fae49; border: 5px solid #000; box-shadow: 0 6px 0 #000; cursor: pointer; }
+  .big-button:hover { background: #4cc858; }
+  .big-button:active { transform: translateY(4px); box-shadow: 0 2px 0 #000; }
+  /* DEV menu (` or F2) */
+  .dev-panel { position: fixed; left: 8px; top: 8px; z-index: 60; width: min(560px, 96vw); max-height: 94vh; overflow: auto; background: rgba(8, 10, 22, .86); color: #cfeadf; font: 12px/1.35 ui-monospace, Consolas, Menlo, monospace; border: 1px solid #5a6a8a; border-radius: 6px; padding: 8px 10px; text-align: left; }
+  .dev-panel[hidden] { display: none; }
+  .dev-title { font-weight: 700; color: #ffd27a; margin-bottom: 4px; }
+  .dev-head { margin-top: 8px; color: #9ec7ff; font-weight: 700; border-bottom: 1px solid #34405c; }
+  .dev-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 3px 0; }
+  .dev-label { color: #9aa7c0; margin-right: 2px; }
+  .dev-panel button { font: inherit; color: #e8f1ff; background: #26324f; border: 1px solid #5a6a8a; border-radius: 4px; padding: 2px 7px; cursor: pointer; }
+  .dev-panel button:hover { background: #34446b; }
+  .dev-panel button.on { background: #7a2b2b; border-color: #ff8a8a; }
+  .dev-panel .dev-small { float: right; padding: 0 5px; }
+  .dev-pre { margin: 3px 0 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="fade"></div>
+
+<div id="hud" hidden>
+  <div class="hp-wrap">
+    <div class="apple-icon"></div>
+    <div id="hp-bar"><div id="hp-fill" data-band="green"></div><div id="hp-text"></div></div>
+  </div>
+  <div class="coin-wrap" id="coin-wrap"><div class="coin-icon"></div><div id="coin-count">0</div></div>
+  <div class="hud-right"><div id="level-name"></div><div id="enemy-count"></div></div>
+</div>
+<div id="floaters"></div>
+<div id="shop" hidden></div>
+<div id="screen" class="screen" hidden></div>
+
+<script>
+/*BUNDLE*/
+</script>
+</body>
+</html>
