@@ -10,10 +10,11 @@
     "autoAimExtra": 1.5
   },
   "weapons": {
-    "sword": { "damage": 10, "range": 2.0, "cooldown": 0.45, "swingTime": 0.25, "knockback": 4 }
+    "sword": { "damage": 10, "range": 2.0, "cooldown": 0.45, "swingTime": 0.25, "knockback": 4, "price": 300 }
   },
+  "tradeIn": { "refund": 0.25 },
   "enemies": {
-    "grunt": { "maxHealth": 40, "armor": 0, "speed": 2.8, "radius": 0.45, "damage": 10, "attackRange": 1.0, "windup": 0.45, "cooldown": 0.9, "stagger": 0.4 },
+    "grunt": { "maxHealth": 40, "armor": 0.1, "speed": 2.8, "radius": 0.45, "damage": 10, "attackRange": 1.0, "windup": 0.45, "cooldown": 0.9, "stagger": 0.4 },
     "barchernarcher": {
       "maxHealth": 120, "armor": 0, "speed": 3.2, "radius": 0.45, "damage": 25, "attackRange": 1.0, "windup": 0.8, "cooldown": 1.5, "stagger": 0.4, "poise": 2,
       "nova": { "range": 2.0, "damage": 10, "accuracy": 0.5, "windup": 0.5, "cooldown": 1.8 }
@@ -22,11 +23,15 @@
     "bowmaster": { "maxHealth": 320, "armor": 0.25, "speed": 1.9, "radius": 0.48, "damage": 8, "attackRange": 8, "windup": 0.9, "cooldown": 1.8, "stagger": 0.3, "poise": 3, "arrowSpeed": 10 }
   },
   "upgrades": {
-    "sharpen": { "add": 0.2, "costs": [200, 400, 700] },
-    "luck": { "add": 0.04, "costs": [150, 300, 500] },
-    "power": { "add": 0.25, "costs": [150, 300, 500] },
-    "heart": { "add": 20, "costs": [200, 400, 700] },
-    "apple": { "add": 0.1, "costs": [100, 250, 400] }
+    "global": {
+      "heart": { "add": 20, "costs": [200, 400, 700] },
+      "apple": { "add": 0.1, "costs": [100, 250, 400] }
+    },
+    "sword": {
+      "sharpen": { "add": 0.2, "costs": [200, 400, 700] },
+      "luck": { "add": 0.04, "costs": [150, 300, 500] },
+      "power": { "add": 0.25, "costs": [150, 300, 500] }
+    }
   },
   "difficulty": {
     "default": 2,

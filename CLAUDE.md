@@ -53,7 +53,7 @@ Rules of the road:
 
 ### Stats: one place for the numbers
 
-- `src/data/stats.json` has sections `hero`, `weapons`, `enemies`, `upgrades` (add + three tier prices), `coins`, `apples`. `src/data/stats.js`
+- `src/data/stats.json` has sections `hero`, `weapons` (each with a shop `price`), `enemies`, `upgrades` (grouped: `global` = heart/apple, then one group per weapon id; each row is `add` + three tier prices), `tradeIn` (`refund` 0.25), `coins`, `apples`. `src/data/stats.js`
   deep-freezes it and exports `STATS`, `stat('a.b.c')` (throws on a typo) and `statRows(prefix)`. `enemies.js`, `weapons.js`, `upgrades.js` and
   `config.js` spread their rows from it and add only non-numeric things (names, looks, behaviors, the swing arc). `tests/stats.test.js` checks
   that nothing drifts, that every enemy/weapon/upgrade has a row, and that armor/radius/price rules hold. `npm run stats` prints it.
@@ -158,9 +158,21 @@ Rules of the road:
   toward a nearby hero, are taken on contact, and anything left is swept into the wallet when the level is won. `world.coins` is the
   wallet; `Game.profile.coins` is copied from it when a level ends (**coins picked up are kept even after a knock-out**, our choice).
   Total payout levels 1-3 is about 1,700 coins by bot.
-- **Upgrades** (`src/data/upgrades.js`, three tiers each, data only): sharper sword (+20% dmg), lucky charm (+4% crit chance),
-  mighty crits (+0.25x), hearty soup (+20 max HP), juicy apples (+10% heal). `src/logic/profile.js` is pure and immutable:
-  `buyUpgrade(profile, id)`, `perksOf(profile, config)` -> the numbers `World` uses (`options.perks`, `options.startCoins`).
+- **Upgrades** (`src/data/upgrades.js`, three tiers each, data only): per weapon (`WEAPON_UPGRADES[weaponId]`; sword: sharper sword +20% dmg,
+  lucky charm +4% crit chance, mighty crits +0.25x) plus global `GLOBAL_UPGRADES` (hearty soup +20 max HP, juicy apples +10% heal).
+  The shop shows at most `MAX_SHOP_ROWS` = 5 rows (keys 1-5), so a weapon has three of its own. `upgradesFor(weaponId)` is what the shop sells.
+  `src/logic/profile.js` is pure and immutable: `buyUpgrade(profile, id)`, `perksOf(profile, config)` -> the numbers `World` uses
+  (`options.perks`, `options.startCoins`). The profile carries `weapon` (default 'sword'; `weaponOf` defaults old-style profiles) and a flat `tiers` map
+  holding the current weapon's tiers plus the global ones.
+- **Weapons: trade-in (M2, rules decided, only the sword exists so far).** Each weapon has its own upgrades (own effects, own prices; luck and power are
+  per weapon too; sharpen is for sword and daggers only, the hammer's replacement is a bigger slam radius, gun and sniper share "sharper bolts" = armor
+  piercing). `swapWeapon(profile, id)`: the old weapon's upgrades are lost; credit = floor(25% of coins spent on that weapon's own upgrades) is set against the
+  new weapon's `price` (the old weapon's own value does NOT count; heart/apple are never refunded or reset); `poor` if coins + credit < price; a credit above
+  the price goes into the wallet. `withStartWeapon` is the free pick before the first fight (title screen; the UI for both is not built).
+  Weapon prices in stats.json are placeholders (sword 300). Not yet built: the other four weapons, a weapon picker, a swap row in the shop, an
+  `armorPierce` perk. `Game.weaponId` is still hard-coded to 'sword' and is not yet read from `profile.weapon`.
+- **Grunts have 0.1 armor** (owner's call, for armor piercing to matter): a sword hit does 9, a grunt takes 5 hits not 4 (it was 4). Bot sweep (20 seeds, noisy):
+  Normal L1/L2/L3 HP lost 10/34/47 (was 10/13/33); Hard L3 win 65% (was 85%). The L2 jump is mostly noise (Hard L2 went down), so retune only after more seeds.
   Prices (150..700) were set against the ~1,700 coins; you cannot afford everything on the first pass.
 - **Profile persists** across levels, restarts and losses within a session (no save file yet).
 - **Elite / boss:** `ENEMIES.bowmaster` (`elite: true`, `behavior: 'archer'`, armor 0.25, 320 HP, speed 1.9, `poise: 3` = hits it can
@@ -302,7 +314,7 @@ Scope guard: five levels, five weapons, three upgrade tiers until the whole thin
 
 ## Handoff checklist (Claude Code)
 
-1. `npm install && npm test` (expect ~139 passing), `npm run build`, open `dist/fighting-for-life.html`.
+1. `npm install && npm test` (expect 143 passing), `npm run build`, open `dist/fighting-for-life.html`.
 2. `python3 -I tools/e2e_check.py` (needs Playwright + Chrome) for the browser flow: 4 levels, shop buy, restart, retry.
 3. Tune numbers in `src/data/stats.json` only; run `npm run stats` to see them all.
 4. Next on the roadmap: M2 weapons (dagger/hammer/toy gun/sniper), M3 character selection (name entry -> `withHeroName`) + save file, M4 levels 4-5 content, M5 polish.

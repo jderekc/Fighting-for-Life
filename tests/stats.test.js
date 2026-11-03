@@ -12,8 +12,9 @@ test('stats.json is the single source: enemy, weapon, upgrade and config numbers
   for (const [id, row] of Object.entries(STATS.enemies)) assert.deepEqual(Object.fromEntries(Object.keys(row).map((k) => [k, ENEMIES[id][k]])), row, id);
   for (const [id, row] of Object.entries(STATS.weapons)) for (const [k, v] of Object.entries(row)) assert.equal(WEAPONS[id][k], v, `${id}.${k}`);
   for (const up of UPGRADES) {
-    assert.equal(up.add, STATS.upgrades[up.id].add);
-    assert.deepEqual(up.costs, STATS.upgrades[up.id].costs);
+    const row = STATS.upgrades[up.weapon ?? 'global'][up.id];
+    assert.equal(up.add, row.add);
+    assert.deepEqual(up.costs, row.costs);
   }
   assert.equal(CONFIG.hero.maxHealth, stat('hero.maxHealth'));
   assert.equal(CONFIG.hero.crit.chance, stat('hero.crit.chance'));
@@ -25,13 +26,16 @@ test('stats.json is the single source: enemy, weapon, upgrade and config numbers
 test('every enemy and weapon in the data has a stats row, and every stats row has a definition', () => {
   assert.deepEqual(Object.keys(STATS.enemies).sort(), Object.keys(ENEMIES).sort());
   assert.deepEqual(Object.keys(STATS.weapons).sort(), Object.keys(WEAPONS).sort());
-  assert.deepEqual(Object.keys(STATS.upgrades).sort(), UPGRADES.map((u) => u.id).sort());
+  const statRowsOf = Object.entries(STATS.upgrades).flatMap(([group, rows]) => Object.keys(rows).map((id) => `${group}.${id}`));
+  assert.deepEqual(statRowsOf.sort(), UPGRADES.map((u) => `${u.weapon ?? 'global'}.${u.id}`).sort());
+  assert.ok(Object.keys(STATS.upgrades).every((g) => g === 'global' || g in WEAPONS), 'upgrade groups are weapons or global');
+  for (const [id, w] of Object.entries(STATS.weapons)) assert.ok(Number.isInteger(w.price) && w.price >= 0, `${id} price`);
 });
 
 test('stat() looks up dotted paths, throws on typos, and the data is frozen', () => {
   assert.equal(stat('enemies.grunt.maxHealth'), 40);
   assert.equal(stat('enemies.neelysomnaly.ramp'), 1.15);
-  assert.deepEqual(stat('upgrades.sharpen.costs'), [200, 400, 700]);
+  assert.deepEqual(stat('upgrades.sword.sharpen.costs'), [200, 400, 700]);
   assert.throws(() => stat('enemies.gruntt.maxHealth'), /Unknown stat/);
   assert.throws(() => stat('enemies.grunt.maxHealth.x'), /Unknown stat/);
   assert.throws(() => {
@@ -49,10 +53,13 @@ test('stats stay sane: positive health, armor below 1, only whole-ish prices, as
     assert.ok(e.armor >= 0 && e.armor < 1, `${id} armor`);
     assert.ok(e.radius < 0.5, `${id} radius (path planning ignores body size)`);
   }
-  for (const [id, u] of Object.entries(STATS.upgrades)) {
-    assert.equal(u.costs.length, 3, id);
-    assert.ok(u.costs.every((c, i) => Number.isInteger(c) && (i === 0 || c > u.costs[i - 1])), `${id} costs`);
+  for (const [group, rows] of Object.entries(STATS.upgrades)) {
+    for (const [id, u] of Object.entries(rows)) {
+      assert.equal(u.costs.length, 3, `${group}.${id}`);
+      assert.ok(u.costs.every((c, i) => Number.isInteger(c) && (i === 0 || c > u.costs[i - 1])), `${group}.${id} costs`);
+    }
   }
+  assert.ok(STATS.tradeIn.refund > 0 && STATS.tradeIn.refund < 1);
 });
 
 test('the default hero is the girl, Nicky, with a name tag; names are cleaned and fall back to Nicky', () => {

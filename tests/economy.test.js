@@ -3,10 +3,11 @@ import { test } from 'node:test';
 import { CONFIG } from '../src/config.js';
 import { ENEMIES } from '../src/data/enemies.js';
 import { LEVELS, validateLevel } from '../src/data/levels.js';
-import { MAX_TIER, UPGRADES } from '../src/data/upgrades.js';
+import { GLOBAL_UPGRADES, MAX_SHOP_ROWS, MAX_TIER, UPGRADES, upgradesFor } from '../src/data/upgrades.js';
+import { WEAPONS } from '../src/data/weapons.js';
 import { NO_SCENERY, shopZone } from '../src/logic/levelGrid.js';
 import { dist } from '../src/logic/math.js';
-import { buyUpgrade, createProfile, nextCost, perksOf, tierOf } from '../src/logic/profile.js';
+import { buyUpgrade, createProfile, nextCost, perksOf, spentOnWeapon, swapWeapon, tierOf, tradeInCredit, weaponOf, withStartWeapon } from '../src/logic/profile.js';
 import { World } from '../src/sim/World.js';
 
 const DT = 1 / 60;
@@ -25,12 +26,13 @@ test('base crit is 1% at 1.5x, and a crit multiplies the hit', () => {
   assert.equal(CONFIG.hero.crit.chance, 0.01);
   assert.equal(CONFIG.hero.crit.multiplier, 1.5);
   const a = spawned(oneEnemy(), { perks: noCrit });
+  const soak = 1 - ENEMIES.grunt.armor; // the grunt absorbs a tenth of every hit
   a.damageEnemy(a.enemies[0], 10);
-  assert.equal(a.enemies[0].damageTaken, 10);
+  assert.equal(a.enemies[0].damageTaken, 10 * soak);
   const b = spawned(oneEnemy(), { perks: alwaysCrit });
   b.damageEnemy(b.enemies[0], 10);
-  assert.equal(b.enemies[0].damageTaken, 15);
-  assert.ok(b.drainEvents().some((e) => e.type === 'enemyHit' && e.crit === true && e.amount === 15));
+  assert.equal(b.enemies[0].damageTaken, 15 * soak);
+  assert.ok(b.drainEvents().some((e) => e.type === 'enemyHit' && e.crit === true && e.amount === 15 * soak));
 });
 
 test('crits happen about 1% of the time at base', () => {
@@ -54,7 +56,7 @@ test('coins: 100 damage drops 90..110 coins, spread over the whole range', () =>
     const e = w.enemies[0];
     e.health.max = 1000;
     e.health.current = 100;
-    w.damageEnemy(e, 100);
+    w.damageEnemy(e, 100 / (1 - ENEMIES.grunt.armor)); // 100 after the grunt's armor
     assert.ok(e.dead);
     assert.equal(w.coinPiles.length, 1);
     values.push(w.coinPiles[0].value);
@@ -66,8 +68,9 @@ test('coins: 100 damage drops 90..110 coins, spread over the whole range', () =>
 test('overkill counts: damage past the last hit point still pays coins', () => {
   const w = spawned(oneEnemy('grunt'), { perks: noCrit });
   w.damageEnemy(w.enemies[0], 400); // grunt has 40 HP
-  assert.equal(w.enemies[0].damageTaken, 400);
-  assert.ok(w.coinPiles[0].value >= 360 && w.coinPiles[0].value <= 440);
+  const dealt = 400 * (1 - ENEMIES.grunt.armor);
+  assert.equal(w.enemies[0].damageTaken, dealt);
+  assert.ok(w.coinPiles[0].value >= Math.floor(dealt * 0.9) && w.coinPiles[0].value <= Math.ceil(dealt * 1.1));
 });
 
 test('armor absorbs a quarter of the elite\'s damage taken', () => {
@@ -80,7 +83,7 @@ test('armor absorbs a quarter of the elite\'s damage taken', () => {
 test('coin piles are taken on contact, drift toward the hero, and are swept into the wallet on a win', () => {
   const w = spawned({ ...oneEnemy('grunt'), enemies: [{ type: 'grunt', x: 3, z: 0, delay: 0 }, { type: 'grunt', x: 20, z: 20, delay: 999 }] }, { perks: noCrit, startCoins: 5 });
   w.hero.x = 1.2; // within the magnet radius of where the grunt falls
-  w.damageEnemy(w.enemies[0], 40);
+  w.damageEnemy(w.enemies[0], 50); // 45 after armor, enough for a 40 HP grunt
   const pile = w.coinPiles[0];
   const d0 = dist(pile.x, pile.z, w.hero.x, w.hero.z);
   w.step(DT, IDLE);
@@ -92,7 +95,7 @@ test('coin piles are taken on contact, drift toward the hero, and are swept into
   // a pile far away is swept in when the level is won
   const w2 = spawned(oneEnemy('grunt'), { perks: noCrit });
   w2.hero.x = -10;
-  w2.damageEnemy(w2.enemies[0], 40);
+  w2.damageEnemy(w2.enemies[0], 50);
   const value = w2.coinPiles[0].value;
   w2.win();
   assert.equal(w2.coins, value, 'swept in exactly once');
@@ -139,7 +142,7 @@ test('perks reach the fight: more damage, more max health, bigger apple heals; a
   assert.equal(w.hero.health.max, 120);
   assert.equal(w.hero.health.current, 120);
   w.damageEnemy(w.enemies[0], 10);
-  assert.ok(Math.abs(w.enemies[0].damageTaken - 14) < 1e-9);
+  assert.ok(Math.abs(w.enemies[0].damageTaken - 14 * (1 - ENEMIES.grunt.armor)) < 1e-9);
   const w2 = spawned(oneEnemy(), {});
   w2.hero.health.damage(50);
   w2.applyPerks(perksOf({ coins: 0, tiers: { heart: 1 } }, CONFIG));
@@ -289,4 +292,60 @@ test('the keeper is invulnerable by construction: he is not an enemy and swingin
 
 test('every enemy hit radius stays under half a block (path planning ignores body size)', () => {
   for (const e of Object.values(ENEMIES)) assert.ok(e.radius < 0.5, e.id);
+});
+
+test('weapon upgrades are per weapon; the shop never offers more than five rows', () => {
+  for (const id of Object.keys(WEAPONS)) {
+    const rows = upgradesFor(id);
+    assert.ok(rows.length <= MAX_SHOP_ROWS, id);
+    assert.deepEqual(rows.slice(-GLOBAL_UPGRADES.length), [...GLOBAL_UPGRADES], 'global upgrades come last');
+  }
+  assert.deepEqual(upgradesFor('sword').map((u) => u.id), ['sharpen', 'luck', 'power', 'heart', 'apple']);
+  assert.deepEqual(upgradesFor('unknown-weapon'), [...GLOBAL_UPGRADES]);
+});
+
+test('trade-in: 25% of weapon-upgrade coins is credited toward the new weapon; heart/apple are untouched', () => {
+  const prices = { ...WEAPONS, hammer: { price: 500 } };
+  let p = { ...createProfile(), coins: 5000 };
+  for (const id of ['sharpen', 'sharpen', 'luck', 'heart', 'apple']) p = buyUpgrade(p, id).profile;
+  assert.equal(spentOnWeapon(p), 200 + 400 + 150, 'heart and apple are not weapon spending');
+  assert.equal(tradeInCredit(p), Math.floor(750 * 0.25));
+  const r = swapWeapon(p, 'hammer', prices);
+  assert.ok(r.ok);
+  assert.equal(r.credit, 187);
+  assert.equal(r.paid, 500 - 187);
+  assert.equal(r.profile.weapon, 'hammer');
+  assert.equal(r.profile.coins, p.coins - (500 - 187));
+  assert.equal(tierOf(r.profile, 'sharpen'), 0, 'the old weapon upgrades are gone');
+  assert.equal(tierOf(r.profile, 'luck'), 0);
+  assert.equal(tierOf(r.profile, 'heart'), 1, 'global upgrades stay');
+  assert.equal(tierOf(r.profile, 'apple'), 1);
+  assert.equal(p.weapon, 'sword', 'the original profile is untouched');
+});
+
+test('trade-in: cannot swap to the same or an unknown weapon, or when credit plus coins fall short; a big credit is not lost', () => {
+  const prices = { ...WEAPONS, hammer: { price: 500 } };
+  const fresh = createProfile();
+  assert.equal(swapWeapon(fresh, 'sword', prices).reason, 'same');
+  assert.equal(swapWeapon(fresh, 'nope', prices).reason, 'unknown');
+  assert.equal(swapWeapon({ ...fresh, coins: 499 }, 'hammer', prices).reason, 'poor');
+  assert.equal(swapWeapon({ ...fresh, coins: 500 }, 'hammer', prices).profile.coins, 0);
+  const rich = { ...createProfile(), coins: 5000 };
+  let p = rich;
+  for (const id of ['sharpen', 'sharpen', 'sharpen', 'luck', 'luck', 'luck', 'power', 'power', 'power']) p = buyUpgrade(p, id).profile;
+  assert.equal(tradeInCredit(p), Math.floor((1300 + 950 + 950) * 0.25));
+  const cheap = swapWeapon({ ...p, coins: 0 }, 'dagger', { ...WEAPONS, dagger: { price: 100 } });
+  assert.ok(cheap.ok);
+  assert.equal(cheap.profile.coins, 800 - 100, 'credit above the price goes into the wallet');
+  assert.equal(cheap.paid, 0);
+});
+
+test('starting weapon: free, keeps coins, and perks follow the weapon in hand', () => {
+  const p = { ...createProfile(), coins: 123 };
+  assert.equal(withStartWeapon(p, 'sword').coins, 123);
+  assert.equal(withStartWeapon(p, 'nope'), p, 'an unknown weapon changes nothing');
+  assert.equal(weaponOf({ coins: 0, tiers: {} }), 'sword', 'old-style profiles default to the sword');
+  const odd = { ...p, weapon: 'hammer', tiers: { sharpen: 3, heart: 1 } };
+  assert.equal(perksOf(odd, CONFIG).damageMult, 1, 'a sword upgrade does nothing for another weapon');
+  assert.equal(perksOf(odd, CONFIG).maxHealth, 120);
 });

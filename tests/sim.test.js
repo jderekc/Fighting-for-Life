@@ -142,7 +142,7 @@ test('sword hits an enemy in front, applies damage and knockback, and ignores on
   front.z = 3.6;
   behind.z = 6.4;
   w.step(DT, { ...IDLE, attack: true });
-  assert.equal(front.health.current, front.health.max - WEAPONS.sword.damage);
+  assert.equal(front.health.current, front.health.max - WEAPONS.sword.damage * (1 - ENEMIES.grunt.armor));
   assert.equal(behind.health.current, behind.health.max);
   assert.ok(front.vz < 0, 'front enemy is knocked away from the hero (toward -z)');
 });
@@ -413,7 +413,7 @@ test('attacks do not pass through walls, but do pass over water', () => {
   w.hero.z = 0.4; // on the south bank, 1.8 from the enemy centre
   w.hero.facing = Math.PI;
   w.step(DT, { ...IDLE, attack: true });
-  assert.equal(across.health.current, across.health.max - WEAPONS.sword.damage, 'hit across the water');
+  assert.equal(across.health.current, across.health.max - WEAPONS.sword.damage * (1 - ENEMIES.grunt.armor), 'hit across the water');
 });
 
 test('the apple inside the cottage can really be reached by walking through the door', () => {

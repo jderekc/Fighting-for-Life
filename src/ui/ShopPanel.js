@@ -1,5 +1,5 @@
-import { UPGRADES, MAX_TIER } from '../data/upgrades.js';
-import { nextCost, tierOf } from '../logic/profile.js';
+import { upgradesFor, MAX_TIER } from '../data/upgrades.js';
+import { nextCost, tierOf, weaponOf } from '../logic/profile.js';
 
 const REASONS = { poor: 'Not enough coins yet!', maxed: 'Already at the top tier!', unknown: 'No such item.' };
 
@@ -11,6 +11,7 @@ export class ShopPanel {
     this.onBuy = onBuy;
     this.onClose = onClose;
     this.visible = false;
+    this.rows = []; // the upgrades on sale to the current weapon, in key order
     root.addEventListener('keydown', (e) => {
       if (!this.visible || e.repeat) return; // holding a key must not buy tier after tier
       if (e.code === 'Escape') {
@@ -18,7 +19,7 @@ export class ShopPanel {
         return;
       }
       const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
-      if (m && UPGRADES[Number(m[1]) - 1]) this.onBuy(UPGRADES[Number(m[1]) - 1].id);
+      if (m && this.rows[Number(m[1]) - 1]) this.onBuy(this.rows[Number(m[1]) - 1].id);
     });
   }
 
@@ -46,7 +47,8 @@ export class ShopPanel {
     head.append(make('h2', '', 'Mystic Shop'), make('div', 'shop-coins', `${profile.coins} coins`));
     panel.append(head);
 
-    UPGRADES.forEach((up, i) => {
+    this.rows = upgradesFor(weaponOf(profile));
+    this.rows.forEach((up, i) => {
       const tier = tierOf(profile, up.id);
       const cost = nextCost(profile, up.id);
       const row = make('div', 'shop-row');

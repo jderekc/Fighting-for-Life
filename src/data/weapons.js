@@ -9,7 +9,7 @@ export const WEAPONS = Object.freeze({
     id: 'sword',
     name: 'Sword',
     behavior: 'meleeArc',
-    ...STATS.weapons.sword, // damage, range (edge-to-edge), cooldown, swingTime (animation), knockback
+    ...STATS.weapons.sword, // damage, range (edge-to-edge), cooldown, swingTime (animation), knockback, price (shop)
     arc: Math.PI * 0.75, // total swing width in radians
   }),
 });
