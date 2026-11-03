@@ -4,7 +4,7 @@ import { rectCells, sceneryOf, waterRects } from '../logic/levelGrid.js';
 import { Arena } from './Arena.js';
 import { animateApple, createAppleMesh, disposeApple } from './AppleView.js';
 import { CharacterView } from './CharacterView.js';
-import { createArrowMesh } from './ArrowView.js';
+import { createArrowMesh, createDartMesh } from './ArrowView.js';
 import { animateCoin, createCoinMesh } from './CoinView.js';
 import { Effects } from './Effects.js';
 import { animateKey, createKeyMesh, disposeKey } from './KeyView.js';
@@ -19,8 +19,12 @@ const BODY_RADIUS = 0.3; // how far from a character's center its body reaches, 
  * the events the sim emitted, but never changes the sim.
  */
 export class WorldView {
-  /** @param {{kind:string, name:string}} heroInfo from the profile (who the player is playing) */
-  constructor(scene, camera, world, hud, heroInfo = { kind: DEFAULT_HERO_ID, name: HEROES[DEFAULT_HERO_ID].defaultName }) {
+  /**
+   * @param {{kind:string, name:string}} heroInfo from the profile (who the player is playing)
+   * @param {{shake?: (strength:number, seconds:number) => void}} hooks things the view cannot do itself (the camera belongs to the Stage)
+   */
+  constructor(scene, camera, world, hud, heroInfo = { kind: DEFAULT_HERO_ID, name: HEROES[DEFAULT_HERO_ID].defaultName }, hooks = {}) {
+    this.hooks = hooks;
     this.scene = scene;
     this.camera = camera;
     this.world = world;
@@ -42,7 +46,7 @@ export class WorldView {
     this.effects = new Effects(this.group);
 
     const heroDef = HEROES[heroInfo.kind] ?? HEROES[DEFAULT_HERO_ID];
-    this.hero = new CharacterView(heroDef.look, { sword: true });
+    this.hero = new CharacterView(heroDef.look, { weapon: world.weapon.id });
     this.hero.addTo(this.group);
     this.nameTag = heroDef.nameTag ? new NameTag(cleanHeroName(heroInfo.name, heroDef.id)) : null;
     if (this.nameTag) this.group.add(this.nameTag.sprite);
@@ -51,6 +55,9 @@ export class WorldView {
     this.appleViews = new Map(); // apple id -> mesh
     this.coinViews = new Map(); // coin pile id -> mesh
     this.arrowViews = new Map(); // arrow id -> mesh
+    this.dartViews = new Map(); // the hero's dart id -> mesh
+    this.aimLine = createAimLine(); // the sniper's line to its target
+    this.group.add(this.aimLine);
     this.keyMesh = null;
     this.clock = 0;
   }
@@ -124,6 +131,40 @@ export class WorldView {
       }
     }
 
+    // The hero's darts
+    const liveDarts = new Set();
+    for (const d of world.heroShots) {
+      liveDarts.add(d.id);
+      let mesh = this.dartViews.get(d.id);
+      if (!mesh) {
+        mesh = createDartMesh();
+        mesh.rotation.y = Math.atan2(d.vx, d.vz);
+        this.group.add(mesh);
+        this.dartViews.set(d.id, mesh);
+      }
+      mesh.position.set(d.x, 1.1 + world.grid.heightAt(d.x, d.z), d.z);
+    }
+    for (const [id, mesh] of this.dartViews) {
+      if (!liveDarts.has(id)) {
+        this.group.remove(mesh);
+        this.dartViews.delete(id);
+      }
+    }
+
+    // The sniper's aim line: from the hero to the enemy the next shot would hit.
+    const aim = world.aimTarget;
+    this.aimLine.visible = world.state === 'playing' && aim !== null;
+    if (this.aimLine.visible) {
+      const h = world.hero;
+      const dx = aim.x - h.x;
+      const dz = aim.z - h.z;
+      const len = Math.hypot(dx, dz);
+      this.aimLine.position.set(h.x + dx / 2, 1.1 + (this.hero.groundY ?? 0), h.z + dz / 2);
+      this.aimLine.scale.set(0.09, 0.09, len);
+      this.aimLine.rotation.y = Math.atan2(dx, dz);
+      this.aimLine.material.opacity = 0.35 + 0.2 * Math.sin(this.clock * 12);
+    }
+
     // Coin piles
     const livePiles = new Set();
     for (const pile of world.coinPiles) {
@@ -183,6 +224,31 @@ export class WorldView {
     switch (ev.type) {
       case 'heroAttack':
         this.hero.startSwing(ev.duration);
+        break;
+      case 'weaponChanged':
+        this.hero.setWeapon(ev.weaponId);
+        break;
+      case 'heroSlam': {
+        const y = this.world.grid.heightAt(ev.x, ev.z);
+        this.effects.ring(ev.x, ev.z, ev.radius, { y: y + 0.12 });
+        this.effects.ring(ev.x, ev.z, ev.radius * 0.6, { y: y + 0.14, color: '#ffffff', life: 0.3 });
+        this.effects.burst(ev.x, ev.z, { color: '#c8a070', count: 16, up: 3, spread: ev.radius * 1.6, life: 0.45, y: y + 0.3 });
+        this.hooks.shake?.(0.35, 0.2);
+        break;
+      }
+      case 'heroShot': {
+        const y = 1.1 + this.world.grid.heightAt(ev.x, ev.z);
+        if (ev.kind === 'beam') {
+          this.effects.tracer(ev.x, ev.z, ev.x1, ev.z1, { y });
+          this.effects.burst(ev.x1, ev.z1, { color: '#ff5a5a', count: ev.hit ? 8 : 3, up: 2, spread: 1.5, life: 0.3, y });
+          this.hooks.shake?.(0.12, 0.2);
+        } else {
+          this.effects.burst(ev.x + Math.sin(ev.facing) * 0.6, ev.z + Math.cos(ev.facing) * 0.6, { color: '#ffe14d', count: 3, up: 1, spread: 1, life: 0.2, y });
+        }
+        break;
+      }
+      case 'shotStopped':
+        this.effects.burst(ev.x, ev.z, { color: ev.hit ? '#ff5fa2' : '#ffe14d', count: ev.hit ? 6 : 3, up: 2, spread: 1.5, life: 0.3, y: 1.0 + this.world.grid.heightAt(ev.x, ev.z) });
         break;
       case 'enemyHit': {
         this.enemyViews.get(ev.id)?.flash();
@@ -249,6 +315,8 @@ export class WorldView {
     for (const view of this.enemyViews.values()) view.dispose();
     this.hero.dispose();
     this.nameTag?.dispose();
+    this.aimLine.material.dispose();
+    this.aimLine.geometry.dispose();
     for (const mesh of this.appleViews.values()) disposeApple(mesh);
     if (this.keyMesh) disposeKey(this.keyMesh);
     this.arena.dispose();
@@ -256,4 +324,11 @@ export class WorldView {
     this.effects.dispose();
     this.group.removeFromParent();
   }
+}
+
+/** A thin translucent red box, stretched between the hero and a target each frame. */
+function createAimLine() {
+  const line = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: '#ff3b3b', transparent: true, opacity: 0.45, depthWrite: false }));
+  line.visible = false;
+  return line;
 }

@@ -229,7 +229,7 @@ class Duel {
   constructor(scene, effects, { heroLook, mobLook, mobOptions, x, z, facing, offset }) {
     this.effects = effects;
     this.offset = offset;
-    this.hero = new CharacterView(heroLook, { sword: true });
+    this.hero = new CharacterView(heroLook, { weapon: 'sword' });
     this.mob = new CharacterView(mobLook, mobOptions);
     this.hero.addTo(scene);
     this.mob.addTo(scene);

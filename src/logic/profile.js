@@ -80,6 +80,8 @@ export function perksOf(profile, config) {
     critMult: config.hero.crit.multiplier,
     maxHealth: config.hero.maxHealth,
     appleHeal: config.apples.healFraction,
+    slamRadius: 0, // hammer: extra shockwave radius
+    armorPierce: 0, // gun and sniper ("sharper bolts"): armor an enemy loses against this hero's hits
   };
   for (const [id, tier] of Object.entries(profile.tiers)) {
     const up = getUpgrade(weaponOf(profile), id);

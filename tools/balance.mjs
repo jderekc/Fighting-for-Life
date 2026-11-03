@@ -1,9 +1,11 @@
 // Balance report from scripted bots.
 //   node tools/balance.mjs difficulty        win rate / HP left / time per level at each difficulty step
+//   node tools/balance.mjs weapons [N]       every weapon on levels 1-3 at Normal (win rate / HP lost / time / coins)
 //   node tools/balance.mjs sensitivity [N]   which numbers move the outcome most (each varied x0.5 and x1.5), level 3 (and 2 for the Barchernarcher)
 // Bots are not children: read this as "which knob matters", not as a prediction of how she will do.
 import { ENEMIES } from '../src/data/enemies.js';
 import { LEVELS } from '../src/data/levels.js';
+import { WEAPON_IDS, WEAPONS } from '../src/data/weapons.js';
 import { STEPS } from '../src/logic/difficulty.js';
 import { World } from '../src/sim/World.js';
 import { botInput } from './bot.mjs';
@@ -11,8 +13,8 @@ import { botInput } from './bot.mjs';
 const SEEDS = Number(process.argv[3]) || 20;
 const DT = 1 / 60;
 
-function trial(level, seed, { difficulty, enemyDefs } = {}) {
-  const w = new World(level, 'sword', { seed, difficulty, enemyDefs });
+function trial(level, seed, { difficulty, enemyDefs, weapon = 'sword' } = {}) {
+  const w = new World(level, weapon, { seed, difficulty, enemyDefs });
   let hpLost = 0;
   let prev = w.hero.health.current;
   for (let i = 0; i < 60 * 240 && w.state === 'playing'; i++) {
@@ -43,6 +45,13 @@ if (mode === 'difficulty') {
   for (const [i, step] of STEPS.entries()) {
     console.log(`\n${step.name} (damage x${step.enemyDamage}, health x${step.enemyHealth})`);
     for (const level of LEVELS.slice(0, 3)) console.log(`  L${level.id}  ${fmt(summarize(level, { difficulty: step }))}`);
+  }
+} else if (mode === 'weapons') {
+  for (const id of WEAPON_IDS) {
+    const w = WEAPONS[id];
+    console.log(`
+${w.name} (${id})`);
+    for (const level of LEVELS.slice(0, 3)) console.log(`  L${level.id}  ${fmt(summarize(level, { weapon: id }))}`);
   }
 } else {
   const knobs = [

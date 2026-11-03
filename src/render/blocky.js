@@ -74,6 +74,61 @@ export function createSword() {
   return sword;
 }
 
+const castShadows = (group) => {
+  group.traverse((o) => {
+    if (o.isMesh) o.castShadow = true;
+  });
+  return group;
+};
+const box = (w, h, d, color, x = 0, y = 0, z = 0) => {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), lambert(color));
+  m.position.set(x, y, z);
+  return m;
+};
+
+/** A short blade with a teal wrap, held point-forward. Two of them make the Shin-kai pair. */
+export function createDagger() {
+  const g = new THREE.Group();
+  g.add(box(0.08, 0.5, 0.03, '#e9f2f7', 0, -0.4, 0), box(0.2, 0.05, 0.07, '#2bb3c0', 0, -0.13, 0), box(0.06, 0.2, 0.06, '#1f6f78', 0, 0, 0));
+  g.position.set(0, -0.7, 0.05);
+  g.rotation.x = -0.9;
+  return castShadows(g);
+}
+
+/** A big stone-headed hammer: long handle, a chunky head with a gold band. */
+export function createHammer() {
+  const g = new THREE.Group();
+  g.add(box(0.08, 1.05, 0.08, '#7a4a22', 0, -0.4, 0), box(0.5, 0.34, 0.34, '#8d97a6', 0, -0.98, 0), box(0.54, 0.07, 0.38, '#e0b030', 0, -0.98, 0), box(0.1, 0.1, 0.1, '#e0b030', 0, 0.14, 0));
+  g.position.set(0, -0.7, 0.05);
+  g.rotation.x = -0.9;
+  return castShadows(g);
+}
+
+/** A bright toy blaster. It points along the arm, so it aims forward once the arm is raised. */
+export function createGun() {
+  const g = new THREE.Group();
+  g.add(box(0.14, 0.42, 0.18, '#ff8a2a', 0, -0.16, 0), box(0.07, 0.3, 0.07, '#2bb3c0', 0, -0.5, 0.02), box(0.09, 0.09, 0.09, '#ffe14d', 0, -0.68, 0.02), box(0.1, 0.2, 0.1, '#3b3b4a', 0, 0.02, -0.12));
+  g.position.set(0, -0.7, 0.05);
+  return castShadows(g);
+}
+
+/** A long toy rifle with a scope. */
+export function createSniper() {
+  const g = new THREE.Group();
+  g.add(box(0.1, 1.1, 0.13, '#3a4a5a', 0, -0.4, 0), box(0.08, 0.32, 0.08, '#2bb3c0', 0, -0.35, 0.12), box(0.13, 0.3, 0.2, '#ff8a2a', 0, 0.1, -0.02), box(0.06, 0.12, 0.06, '#ffe14d', 0, -0.98, 0));
+  g.position.set(0, -0.7, 0.05);
+  return castShadows(g);
+}
+
+/** What the hero holds for each weapon: { right, left } groups for the arm pivots (left is null for one-handed weapons). One builder per weapon id. */
+export const HELD_WEAPONS = Object.freeze({
+  sword: () => ({ right: createSword(), left: null }),
+  dagger: () => ({ right: createDagger(), left: createDagger() }),
+  hammer: () => ({ right: createHammer(), left: null }),
+  gun: () => ({ right: createGun(), left: null }),
+  sniper: () => ({ right: createSniper(), left: null }),
+});
+
 /** A bow for the left hand. Its long axis is local z (it stands upright once the arm is raised forward); the tips and the string curve back toward the archer (limb tilt signs matter: the tips must lean to the string's side). */
 export function createBow() {
   const bow = new THREE.Group();

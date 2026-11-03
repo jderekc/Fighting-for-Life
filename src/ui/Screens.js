@@ -1,4 +1,6 @@
 import { difficultyIconUrl } from './difficultyIcons.js';
+import { weaponIconUrl } from './weaponIcons.js';
+import { WEAPON_IDS, WEAPONS } from '../data/weapons.js';
 import { clampStep, STEPS } from '../logic/difficulty.js';
 
 const SCREENS = {
@@ -30,8 +32,9 @@ const SCREENS = {
 
 /** Full-screen overlays for title, win and lose. The button works with mouse/touch too. */
 export class Screens {
-  constructor(root = document, onConfirm = () => {}, difficulty = null) {
+  constructor(root = document, onConfirm = () => {}, difficulty = null, weapons = null) {
     this.difficulty = difficulty; // { get(), set(step) } or null
+    this.weapons = weapons; // { get(), set(id) } or null: the free first-weapon pick on the title screen
     this.root = root;
     this.el = root.getElementById('screen');
     this.onConfirm = onConfirm;
@@ -55,9 +58,39 @@ export class Screens {
     };
     const button = make('button', 'big-button', s.button);
     button.addEventListener('click', () => this.onConfirm());
-    this.el.append(make('h1', '', s.heading), make('p', 'sub', sub ?? s.sub), button);
+    this.el.append(make('h1', '', s.heading), make('p', 'sub', sub ?? s.sub));
+    if (this.weapons && name === 'title') this.el.append(this.weaponPicker(make));
+    this.el.append(button);
     if (this.difficulty && (name === 'title' || name === 'lost')) this.el.append(this.difficultySlider(make));
     this.el.append(make('p', 'hint', s.hint));
+  }
+
+  /** "Pick your weapon": one card per weapon; the chosen one is lit. Choosing is free here; later swaps are trade-ins at the shop. */
+  weaponPicker(make) {
+    const wrap = make('div', 'weapon-picker', '');
+    wrap.setAttribute('role', 'radiogroup');
+    wrap.setAttribute('aria-label', 'Choose your weapon');
+    const cards = [];
+    const mark = () => cards.forEach(([id, card]) => card.setAttribute('aria-checked', String(id === this.weapons.get())));
+    for (const id of WEAPON_IDS) {
+      const card = make('button', 'weapon-card', '');
+      card.type = 'button';
+      card.setAttribute('role', 'radio');
+      const icon = make('span', 'weapon-icon', '');
+      icon.style?.setProperty('background-image', weaponIconUrl(id));
+      card.append(icon, make('span', 'weapon-name', WEAPONS[id].name), make('span', 'weapon-blurb', WEAPONS[id].blurb));
+      card.addEventListener('click', () => {
+        this.weapons.set(id);
+        mark();
+      });
+      card.addEventListener('keydown', (e) => {
+        if (e.code === 'Enter' || e.code === 'Space') e.stopPropagation(); // pressing a card chooses it; it must not also start the game
+      });
+      cards.push([id, card]);
+      wrap.append(card);
+    }
+    mark();
+    return wrap;
   }
 
   /** "How hard?" slider: steps from stats.json difficulty.steps. The label shows the chosen step's name. */

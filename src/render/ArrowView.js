@@ -21,3 +21,18 @@ export function createArrowMesh() {
   });
   return g;
 }
+
+const dartBody = new THREE.MeshBasicMaterial({ color: '#ffcf3a' });
+const dartTip = new THREE.MeshBasicMaterial({ color: '#ff5fa2' });
+const dartShaft = new THREE.BoxGeometry(0.13, 0.13, 0.4);
+const dartNose = new THREE.BoxGeometry(0.17, 0.17, 0.12);
+
+/** A bright toy dart for the hero's gun, pointing along +z. Shared geometry and materials, never disposed per dart. */
+export function createDartMesh() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(dartShaft, dartBody);
+  const nose = new THREE.Mesh(dartNose, dartTip);
+  nose.position.z = 0.24;
+  g.add(body, nose);
+  return g;
+}

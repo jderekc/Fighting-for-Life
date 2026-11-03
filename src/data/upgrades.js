@@ -24,6 +24,26 @@ export const WEAPON_UPGRADES = Object.freeze({
     make('sword', 'luck', 'Lucky Charm', '+4% crit chance per tier', 'critChance'),
     make('sword', 'power', 'Mighty Crits', '+0.25x crit damage per tier', 'critMult'),
   ]),
+  dagger: Object.freeze([
+    make('dagger', 'sharpen', 'Sharper Daggers', '+20% damage per tier', 'damageMult'),
+    make('dagger', 'luck', 'Lucky Charm', '+4% crit chance per tier (both hits roll!)', 'critChance'),
+    make('dagger', 'power', 'Mighty Crits', '+0.25x crit damage per tier', 'critMult'),
+  ]),
+  hammer: Object.freeze([
+    make('hammer', 'slam', 'Bigger Slam', 'the shockwave reaches +0.4 blocks further per tier', 'slamRadius'),
+    make('hammer', 'luck', 'Lucky Charm', '+4% crit chance per tier', 'critChance'),
+    make('hammer', 'power', 'Mighty Crits', '+0.25x crit damage per tier', 'critMult'),
+  ]),
+  gun: Object.freeze([
+    make('gun', 'bolts', 'Sharper Bolts', 'darts cut through 10% more armor per tier', 'armorPierce'),
+    make('gun', 'luck', 'Lucky Charm', '+4% crit chance per tier', 'critChance'),
+    make('gun', 'power', 'Mighty Crits', '+0.25x crit damage per tier', 'critMult'),
+  ]),
+  sniper: Object.freeze([
+    make('sniper', 'bolts', 'Sharper Bolts', 'shots cut through 10% more armor per tier', 'armorPierce'),
+    make('sniper', 'luck', 'Lucky Charm', '+4% crit chance per tier', 'critChance'),
+    make('sniper', 'power', 'Mighty Crits', '+0.25x crit damage per tier', 'critMult'),
+  ]),
 });
 
 /** Every upgrade in the game (all weapons, then global). */

@@ -1,6 +1,6 @@
 import { LEVELS } from '../data/levels.js';
 import { CONFIG } from '../config.js';
-import { buyUpgrade, createProfile, perksOf } from '../logic/profile.js';
+import { buyUpgrade, createProfile, perksOf, swapWeapon, weaponOf, withStartWeapon } from '../logic/profile.js';
 import { Stage } from '../render/Stage.js';
 import { WorldView } from '../render/WorldView.js';
 import { World } from '../sim/World.js';
@@ -29,18 +29,25 @@ export class Game {
     this.input.attachCanvas(this.stage.renderer.domElement);
     this.clickMover = new ClickMover(); // right-click "walk there"
     this.hud = new Hud(document);
-    this.screens = new Screens(document, () => this.confirm(), {
-      get: () => this.profile.difficulty,
-      set: (step) => (this.profile = withDifficulty(this.profile, step)), // takes effect when the next fight starts
-    });
-    this.shopPanel = new ShopPanel(document, { onBuy: (id) => this.buy(id), onClose: () => this.closeShop() });
+    this.screens = new Screens(
+      document,
+      () => this.confirm(),
+      {
+        get: () => this.profile.difficulty,
+        set: (step) => (this.profile = withDifficulty(this.profile, step)), // takes effect when the next fight starts
+      },
+      {
+        get: () => weaponOf(this.profile),
+        set: (id) => (this.profile = withStartWeapon(this.profile, id)), // the free first pick; later swaps go through the shop's trade-in
+      },
+    );
+    this.shopPanel = new ShopPanel(document, { onBuy: (id) => this.buy(id), onSwap: (id) => this.swap(id), onClose: () => this.closeShop() });
     this.shopDismissed = false; // Esc closes the menu until the hero walks away from the desk and back
     this.state = 'title';
     this.world = null;
     this.view = null;
     this.levelIndex = 0;
     this.profile = createProfile(); // coins and bought upgrades; they survive losses and restarts
-    this.weaponId = 'sword';
     this.lastTime = null;
     this.endedAt = 0;
     this.paused = false;
@@ -86,6 +93,11 @@ export class Game {
     this.start();
   }
 
+  /** The weapon in the hero's hand: whatever the profile says (chosen on the title screen, changed at the shop). */
+  get weaponId() {
+    return weaponOf(this.profile);
+  }
+
   /** DEV menu: start level `index` right now, at full health (a testing shortcut, not a game rule). */
   jumpToLevel(index) {
     this.entryHealth = Infinity;
@@ -112,6 +124,23 @@ export class Game {
     this.world.applyPerks(perksOf(this.profile, CONFIG));
     this.hud.bounceCoins();
     this.shopPanel.render(this.profile, 'Thank you!');
+  }
+
+  /** Trade the weapon in at the desk: its upgrades go, 25% of what they cost counts toward the new one. Takes effect in the live fight. */
+  swap(id) {
+    if (this.state !== 'playing' || !this.world?.nearShop) return;
+    const before = { ...this.profile, coins: this.world.coins };
+    const result = swapWeapon(before, id);
+    if (!result.ok) {
+      this.shopPanel.flash(before, ShopPanel.reasonText(result.reason));
+      return;
+    }
+    this.profile = result.profile;
+    this.world.coins = this.profile.coins;
+    this.world.setWeapon(id);
+    this.world.applyPerks(perksOf(this.profile, CONFIG));
+    this.hud.bounceCoins();
+    this.shopPanel.render(this.profile, 'Traded in. Good luck!');
   }
 
   /** Open the menu while the hero stands at the desk; close it when they leave. */
@@ -149,7 +178,7 @@ export class Game {
     });
     this.dev.onWorldStart(this.world);
     this.stage.setArena(level.arena);
-    this.view = new WorldView(this.stage.scene, this.stage.camera, this.world, this.hud, this.profile.hero);
+    this.view = new WorldView(this.stage.scene, this.stage.camera, this.world, this.hud, this.profile.hero, { shake: (strength, seconds) => this.stage.shake(strength, seconds) });
     this.stage.follow(this.world.hero.x, this.world.hero.z, 0, true);
 
     this.screens.hide();

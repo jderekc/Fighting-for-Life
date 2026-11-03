@@ -41,6 +41,9 @@ export class World {
     this.coinsEarned = 0; // picked up during this level
     this.coinPiles = []; // { id, x, z, value } lying on the ground
     this.projectiles = []; // enemy arrows in flight: { id, x, z, vx, vz, radius, damage, life, fromId }
+    this.heroShots = []; // the hero's darts in flight: { id, x, z, vx, vz, radius, damage, knockback, life }
+    this.scheduled = []; // later effects of an attack (a dagger's second hit, the hammer's slam): { at, run }
+    this.aimTarget = null; // the enemy a sniper would shoot right now (for the aim line)
     this.weapon = getWeapon(weaponId);
     this.rng = mulberry32(seed);
     this.time = 0;
@@ -163,6 +166,7 @@ export class World {
     this.time += dt;
 
     this.updateHero(dt, input);
+    this.runScheduled();
     this.updateDoors(dt);
 
     const othersAlive = this.enemies.some((o) => !o.finale && !o.def.optional && o.state !== 'dead');
@@ -189,6 +193,7 @@ export class World {
     const z = this.shopZone;
     this.nearShop = z !== null && this.hero.x >= z.x0 && this.hero.x <= z.x1 && this.hero.z >= z.z0 && this.hero.z <= z.z1;
     this.updateProjectiles(dt);
+    this.updateHeroShots(dt);
     this.updateCoins(dt);
 
     if (this.hero.health.isDead) {
@@ -252,7 +257,52 @@ export class World {
     }
     if (h.moving && h.swingRemaining <= 0) h.facing = Math.atan2(nx, nz);
 
+    if (this.weapon.aimLine) {
+      const t = this.pickTarget();
+      this.aimTarget = t && this.grid.lineClear(h.x, h.z, t.x, t.z, 0, SIGHT) ? t : null;
+    } else this.aimTarget = null;
+
     if (input.attack && h.attackCooldown <= 0) this.heroAttack();
+  }
+
+  /** Run `fn` after `delay` seconds of fight time (the rest of a multi-part attack). */
+  schedule(delay, fn) {
+    this.scheduled.push({ at: this.time + delay, run: fn });
+  }
+
+  runScheduled() {
+    if (this.scheduled.length === 0) return;
+    const due = this.scheduled.filter((s) => s.at <= this.time);
+    if (due.length === 0) return;
+    this.scheduled = this.scheduled.filter((s) => s.at > this.time);
+    for (const s of due) s.run();
+  }
+
+  /** Swap the weapon in the hero's hand mid-fight (the shop does this). Half-finished attacks of the old one are dropped. */
+  setWeapon(weaponId) {
+    this.weapon = getWeapon(weaponId);
+    this.scheduled = [];
+    this.heroShots = [];
+    this.hero.attackCooldown = 0;
+    this.hero.swingRemaining = 0;
+    this.emit({ type: 'weaponChanged', weaponId });
+  }
+
+  /** The enemy auto-aim would pick: the nearest real enemy in reach, else a sleeping rock in reach, else null. */
+  pickTarget() {
+    const reach = this.weapon.range + this.config.autoAimExtra;
+    const awake = this.activeEnemies().filter((e) => !e.def.optional);
+    return nearestTarget(this.hero, awake, reach) ?? nearestTarget(this.hero, this.activeEnemies(), reach);
+  }
+
+  /** How far a straight line from (x, z) along (dx, dz) runs before a wall or tree stops it, up to `max` (water does not stop it). */
+  rayLength(x, z, dx, dz, max, step = 0.25) {
+    let clear = 0;
+    for (let t = step; t <= max + 1e-9; t += step) {
+      if (!this.grid.lineClear(x, z, x + dx * t, z + dz * t, 0, SIGHT)) return clear;
+      clear = t;
+    }
+    return max;
   }
 
   /** Doors open by themselves when the hero or an enemy comes close, and close after everyone leaves. */
@@ -287,9 +337,7 @@ export class World {
     const w = this.weapon;
     // Auto-aim: face the nearest enemy within reach plus some assist.
     // Real enemies first: a sleeping rock only gets the swing when nothing else is in reach.
-    const reach = w.range + this.config.autoAimExtra;
-    const awake = this.activeEnemies().filter((e) => !e.def.optional);
-    const target = nearestTarget(h, awake, reach) ?? nearestTarget(h, this.activeEnemies(), reach);
+    const target = this.pickTarget();
     if (target) h.facing = angleTo(h.x, h.z, target.x, target.z);
 
     h.attackCooldown = w.cooldown;
@@ -329,10 +377,11 @@ export class World {
   damageEnemy(enemy, base, knockback = 0) {
     if (enemy.dead || enemy.state === 'pending') return;
     const crit = this.rng() < this.perks.critChance;
-    const dealt = base * this.perks.damageMult * (crit ? this.perks.critMult : 1) * (1 - enemy.armor);
+    const armor = Math.max(0, enemy.armor - (this.perks.armorPierce ?? 0)); // "sharper bolts" cut through armor
+    const dealt = base * this.perks.damageMult * (crit ? this.perks.critMult : 1) * (1 - armor);
     enemy.damageTaken += dealt;
     enemy.health.damage(dealt);
-    this.logCalc({ kind: 'hit', target: enemy.def.id, base, damageMult: this.perks.damageMult, crit, critMult: this.perks.critMult, armor: enemy.armor, dealt, hpAfter: enemy.health.current, hpMax: enemy.health.max });
+    this.logCalc({ kind: 'hit', target: enemy.def.id, base, damageMult: this.perks.damageMult, crit, critMult: this.perks.critMult, armor, dealt, hpAfter: enemy.health.current, hpMax: enemy.health.max });
     this.emit({ type: 'enemyHit', id: enemy.id, amount: dealt, crit, x: enemy.x, z: enemy.z });
 
     if (!enemy.def.immovable) {
@@ -401,6 +450,59 @@ export class World {
     this.perks = perks;
     this.hero.health.max = perks.maxHealth;
     if (gained > 0) this.hero.health.current += gained;
+  }
+
+  /** The toy gun: a dart leaves the hero along `facing`. It stops at walls and trees and at the first enemy it touches. */
+  fireDart(weapon) {
+    const h = this.hero;
+    const dx = Math.sin(h.facing);
+    const dz = Math.cos(h.facing);
+    const dart = {
+      id: this.nextId(),
+      x: h.x,
+      z: h.z,
+      vx: dx * weapon.dartSpeed,
+      vz: dz * weapon.dartSpeed,
+      radius: weapon.dartRadius,
+      damage: weapon.damage,
+      knockback: weapon.knockback,
+      life: weapon.range / weapon.dartSpeed,
+    };
+    this.heroShots.push(dart);
+    this.emit({ type: 'heroShot', kind: 'dart', id: dart.id, x: dart.x, z: dart.z, facing: h.facing });
+  }
+
+  /** Darts move in short steps (so a fast one cannot skip over a thin enemy), stop at walls, and hit the first enemy in the way. */
+  updateHeroShots(dt) {
+    for (let i = this.heroShots.length - 1; i >= 0; i--) {
+      const p = this.heroShots[i];
+      p.life -= dt;
+      const total = Math.hypot(p.vx, p.vz) * dt;
+      const steps = Math.max(1, Math.ceil(total / 0.25));
+      let gone = false;
+      for (let k = 0; k < steps && !gone; k++) {
+        const nx = p.x + (p.vx * dt) / steps;
+        const nz = p.z + (p.vz * dt) / steps;
+        if (Math.abs(nx) > this.bounds.halfW + 0.5 || Math.abs(nz) > this.bounds.halfD + 0.5 || !this.grid.lineClear(p.x, p.z, nx, nz, 0, SIGHT)) {
+          this.emit({ type: 'shotStopped', x: p.x, z: p.z });
+          gone = true;
+          break;
+        }
+        p.x = nx;
+        p.z = nz;
+        const hit = this.activeEnemies().find((e) => dist(p.x, p.z, e.x, e.z) <= p.radius + e.radius);
+        if (hit) {
+          this.damageEnemy(hit, p.damage, p.knockback);
+          this.emit({ type: 'shotStopped', x: p.x, z: p.z, hit: true });
+          gone = true;
+        }
+      }
+      if (!gone && p.life <= 0) {
+        this.emit({ type: 'shotStopped', x: p.x, z: p.z }); // fell out of range
+        gone = true;
+      }
+      if (gone) this.heroShots.splice(i, 1);
+    }
   }
 
   /** An archer releases an arrow toward where the hero is right now. */

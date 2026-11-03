@@ -11,7 +11,7 @@ npm test          # node:test, runs tests/**/*.test.js (pure logic + headless si
 npm run build     # -> dist/fighting-for-life.html, one self-contained file, double-click to play
 npm run dev       # rebuild on change (reload the page manually)
 python3 -I tools/e2e_check.py   # real-browser smoke test (needs python playwright + google-chrome)
-node tools/balance.mjs difficulty|sensitivity   # bot balance reports (see Difficulty and balance)
+node tools/balance.mjs difficulty|weapons|sensitivity   # bot balance reports (see Difficulty and balance)
 npm run stats                   # print every tuning number (npm run stats -- enemies.grunt  for one section/value)
 ```
 
@@ -164,13 +164,25 @@ Rules of the road:
   `src/logic/profile.js` is pure and immutable: `buyUpgrade(profile, id)`, `perksOf(profile, config)` -> the numbers `World` uses
   (`options.perks`, `options.startCoins`). The profile carries `weapon` (default 'sword'; `weaponOf` defaults old-style profiles) and a flat `tiers` map
   holding the current weapon's tiers plus the global ones.
-- **Weapons: trade-in (M2, rules decided, only the sword exists so far).** Each weapon has its own upgrades (own effects, own prices; luck and power are
-  per weapon too; sharpen is for sword and daggers only, the hammer's replacement is a bigger slam radius, gun and sniper share "sharper bolts" = armor
-  piercing). `swapWeapon(profile, id)`: the old weapon's upgrades are lost; credit = floor(25% of coins spent on that weapon's own upgrades) is set against the
+- **Weapons (M2, built).** `WEAPONS` in `src/data/weapons.js` (numbers in stats.json `weapons.<id>`, every `price` is 500): `sword` (10 dmg, 0.45 s, arc, knockback 4),
+  `dagger` Shin-kai Daggers (3 dmg x 2 hits 0.07 s apart per press, 0.25 s, reach 1.4, knockback 1, narrow arc), `hammer` Mjolnir Hammer (slam 0.35 s after the press,
+  45 dmg to everything within radius 2.2 edge to edge in all directions, 1.1 s cooldown, knockback 7, walls shelter, ring + screen shake), `gun` Toy Gun (dart 7 dmg,
+  speed 14, range 7, 0.35 s, stops at walls and at the first enemy), `sniper` Toy Sniper (instant beam 45 dmg, range 16, 1.6 s, first enemy on the line, walls block it, red aim
+  line to the target). A grunt (40 HP, 10% armor) falls to one hammer slam or one sniper shot. `weaponBehaviors.js`: `meleeArc` (with `hits`/`hitGap`), `slam`, `shoot`, `beam`.
+  `World.schedule(delay, fn)` runs the later parts of an attack (second dagger hit, the slam); `world.heroShots` are the darts; `world.aimTarget` is the sniper's line target;
+  `world.setWeapon(id)` swaps mid-fight (drops half-finished attacks, emits `weaponChanged`). New events: `heroSlam`, `heroShot` (`kind: 'dart'|'beam'`), `shotStopped`.
+  Each weapon has its own three upgrades (own effects and prices; sword/dagger: sharpen, luck, power; hammer: bigger slam (+0.4 radius/tier), luck, power; gun/sniper: sharper
+  bolts (+0.1 armor pierce/tier, `perks.armorPierce`, so tier 1 cancels a grunt's armor), luck, power) plus global heart/apple = 5 shop rows (keys 1-5).
+- **Trade-in.** `swapWeapon(profile, id)`: the old weapon's upgrades are lost; credit = floor(25% of coins spent on that weapon's own upgrades) is set against the
   new weapon's `price` (the old weapon's own value does NOT count; heart/apple are never refunded or reset); `poor` if coins + credit < price; a credit above
-  the price goes into the wallet. `withStartWeapon` is the free pick before the first fight (title screen; the UI for both is not built).
-  Weapon prices in stats.json are placeholders (sword 300). Not yet built: the other four weapons, a weapon picker, a swap row in the shop, an
-  `armorPierce` perk. `Game.weaponId` is still hard-coded to 'sword' and is not yet read from `profile.weapon`.
+  the price goes into the wallet. The shop panel shows a "Holding: ..." row with the other four weapons priced after the credit (click, or keys 6-9; `Game.swap`).
+  The title screen has the free first pick (`withStartWeapon`, cards in `Screens.weaponPicker`, icons `ui/weaponIcons.js`). The shop is the last level, so a swap there
+  applies to the next run. `Game.weaponId` is read from `profile.weapon` (no hard-coded weapon); the title flyover hero keeps a sword.
+- **Render side:** `blocky.js HELD_WEAPONS` (one builder per weapon id; daggers come in a pair), `CharacterView({ weapon })`/`setWeapon` with a `style` per weapon
+  (`swing`, `stab`, `slam`, `shoot`), `Effects.ring/tracer`, `ArrowView.createDartMesh`, `WorldView` hooks `{ shake }` and the aim line.
+- **Bot findings (`node tools/balance.mjs weapons`, 20 seeds, Normal, never dodges; HP lost L1/L2/L3):** sword 10/34/47, dagger 20/0/16 (the fast hits keep grunts staggered and
+  break the bosses' poise: it is the strongest melee weapon), hammer 60/34/60 (all wins, but it is vulnerable during its windup: the hardest weapon on level 1), gun 10/26/57,
+  sniper 10/5/85 (90% on L3: strong against approaching enemies, weak against the elite's armor and crowds). First-pass numbers; the bot does not kite or dodge.
 - **Grunts have 0.1 armor** (owner's call, for armor piercing to matter): a sword hit does 9, a grunt takes 5 hits not 4 (it was 4). Bot sweep (20 seeds, noisy):
   Normal L1/L2/L3 HP lost 10/34/47 (was 10/13/33); Hard L3 win 65% (was 85%). The L2 jump is mostly noise (Hard L2 went down), so retune only after more seeds.
   Prices (150..700) were set against the ~1,700 coins; you cannot afford everything on the first pass.
@@ -224,9 +236,9 @@ Rules of the road:
 
 ### Adding things
 
-- **Weapon:** entry in `src/data/weapons.js` (+ a `behavior` in `weaponBehaviors.js` if it's a new kind). The sim test
-  `data: every level validates, every weapon has a known behavior...` checks it automatically. Add a CharacterView mesh
-  for it (see `createSword` in `src/render/blocky.js`).
+- **Weapon:** a row in stats.json `weapons.<id>` (with `price`) and `upgrades.<id>` (three rows), an entry in `src/data/weapons.js` (+ a `behavior` in `weaponBehaviors.js` if it's a new kind),
+  a list in `WEAPON_UPGRADES` (`data/upgrades.js`, three upgrades), a held model in `blocky.js HELD_WEAPONS`, and an icon in `ui/weaponIcons.js`. Tests check that every weapon has a behavior, a
+  model, an icon, a price and five shop rows; the shop's trade-in row and the title picker pick it up by themselves (keys 6-9 cover four *other* weapons, so a sixth weapon needs a layout change).
 - **Enemy:** numbers in `src/data/stats.json` (`enemies.<id>`), entry in `src/data/enemies.js` (`look` colors drive the model; `look.model` 'sun'/'rock' picks a special model in `render/mobs.js`). State machine lives in `src/sim/enemyAI.js` (`behavior`: chase default, 'archer', 'flare', 'sleeper').
 - **Level:** entry in `src/data/levels.js`; `validateLevel()` catches out-of-bounds spawns and unknown enemy types. A spawn may be `{random: {spots, delay:[min,max]}}`.
 
@@ -235,7 +247,7 @@ Rules of the road:
 - **Audience:** a 7-year-old. No punishing failure (losing costs nothing permanent), short fights, simple controls,
   readable feedback. Cartoon tone: defeated enemies get "knocked out" with a puff of stars, no blood.
 - **Controls:** one move input + one attack button (hold to repeat). Gamepad should feel as good as keyboard. Mouse: left click = attack, right click = walk there (added at the owner's request).
-- **One weapon per fight, chosen in the shop beforehand. No in-fight weapon switching.**
+- **One weapon at a time: picked free on the title screen, changed only by a trade-in at the shop. No weapon switching in a fight.**
 - **Auto-target:** attacks aim at the nearest enemy in reach (+ `autoAimExtra`). No manual aiming.
 - **Camera:** fixed tilt (~54 deg), follows the hero, player cannot rotate it.
 - **Apples:** pickups that heal 25% of max health, walked over (no button), spawn on a timer at fixed spots and sometimes drop
@@ -248,7 +260,7 @@ Rules of the road:
 
 - **M1 (DONE): playable fight.** One arena, blocky hero + sword with auto-target, grunt enemies with a telegraphed attack
   (windup, stagger when hit during windup), health bars, apples, HUD, title/win/lose screens, 3 spawn waves.
-- **M2: remaining weapons** (selected before the fight; data resources):
+- **M2 (DONE): the five weapons, picker and trade-in** (see *Weapons* above; kept here as the original brief):
 
   | Weapon | Feel |
   |---|---|
@@ -258,8 +270,7 @@ Rules of the road:
   | Toy gun | Medium range, straight shots, steady damage |
   | Toy sniper | Long range, slow fire rate, high damage, visible aim line |
 
-  Guns need a projectile system in the sim (new behavior + entity list in `World`, `projectileHit` events). The toy guns fire
-  foam darts / bright bolts, nothing lethal-looking.
+  Built: hero darts (`world.heroShots`) and an instant sniper beam. The toy guns fire bright darts / a red streak, nothing lethal-looking.
 - **M3: shop + character creator + save.** (Started: upgrade shop + coins are in; weapon choice, cosmetics and save are not.) Walkable 3D shop room with a shopkeeper; weapon choice and upgrade tiers (3 per
   weapon), apple upgrades, cosmetics, coins. Save file in `localStorage` (wrap every access in try/catch; works reliably from a
   downloaded local copy, less so from a shared link). Introduce a `Save` module in `src/core/`; keep it pure + testable.
@@ -287,7 +298,7 @@ Scope guard: five levels, five weapons, three upgrade tiers until the whole thin
 - Visuals were checked via headless Chrome with software WebGL (low FPS, so animation timing was not judged). Real GPU
   look/feel, shadows and performance are unverified.
 - Gamepad support is written against the standard mapping and has not been tried on real hardware.
-- No audio yet. No save file (coins/upgrades last for the session). Only the sword exists, so there is no weapon choice in the shop yet.
+- No audio yet. No save file (coins/upgrades last for the session). The weapon models, animations, slam ring and sniper line were only seen in software-WebGL screenshots (idle poses and a still aim line; the swing/recoil animations and the effects' timing were not judged).
 - The elite fight and the whole economy are tuned only against scripted bots (a bot that never dodges loses ~55 HP to the elite;
   coins per level ~400-900). Real-player feel, price balance and the shop UX with a child are untested. Software-WebGL screenshots only.
 - The shop is mouse/keyboard only (click Buy or keys 1-5); a gamepad cannot use it yet. `validateLevel` does not check that `shopZone` lies inside the shop building.
@@ -314,10 +325,10 @@ Scope guard: five levels, five weapons, three upgrade tiers until the whole thin
 
 ## Handoff checklist (Claude Code)
 
-1. `npm install && npm test` (expect 143 passing), `npm run build`, open `dist/fighting-for-life.html`.
+1. `npm install && npm test` (expect 160 passing), `npm run build`, open `dist/fighting-for-life.html`.
 2. `python3 -I tools/e2e_check.py` (needs Playwright + Chrome) for the browser flow: 4 levels, shop buy, restart, retry.
 3. Tune numbers in `src/data/stats.json` only; run `npm run stats` to see them all.
-4. Next on the roadmap: M2 weapons (dagger/hammer/toy gun/sniper), M3 character selection (name entry -> `withHeroName`) + save file, M4 levels 4-5 content, M5 polish.
+4. Next on the roadmap: M3 character selection (name entry -> `withHeroName`) + save file, M4 levels 4-5 content, M5 polish.
 5. Keep this file current: update it in the same change as any rule/architecture change.
 
 ## Working with the owner (Derek)
