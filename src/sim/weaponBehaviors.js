@@ -17,6 +17,27 @@ function strikeArc(world, weapon) {
   }
 }
 
+/**
+ * The enemy (nearest to the hero) whose body the barrel itself runs through: at point-blank range a shot would start beyond it,
+ * so it is hit straight away instead of being skipped.
+ */
+function inBarrel(world, muzzle, pad) {
+  const h = world.hero;
+  const sx = muzzle.x - h.x;
+  const sz = muzzle.z - h.z;
+  const len2 = sx * sx + sz * sz;
+  if (len2 < 1e-9) return null;
+  let best = null;
+  let bestD = Infinity;
+  for (const e of world.activeEnemies()) {
+    const t = Math.max(0, Math.min(1, ((e.x - h.x) * sx + (e.z - h.z) * sz) / len2));
+    if (dist(h.x + sx * t, h.z + sz * t, e.x, e.z) > e.radius + pad) continue;
+    const d = dist(h.x, h.z, e.x, e.z);
+    if (d < bestD) [best, bestD] = [e, d];
+  }
+  return best;
+}
+
 const behaviors = {
   /** Hits every living enemy inside an arc in front of the hero. `hits` > 1 (daggers): the rest follow `hitGap` seconds apart. */
   meleeArc(world, weapon) {
@@ -38,29 +59,44 @@ const behaviors = {
     });
   },
 
-  /** The toy gun: a dart flies out and hits the first enemy it meets. */
+  /** The toy gun: a dart leaves the barrel and hits the first enemy it meets (one right at the barrel is hit at once). */
   shoot(world, weapon) {
-    world.fireDart(weapon);
+    const near = inBarrel(world, world.muzzle(weapon), weapon.dartRadius);
+    if (!near) {
+      world.fireDart(weapon);
+      return;
+    }
+    const m = world.muzzle(weapon);
+    world.emit({ type: 'heroShot', kind: 'dart', id: -1, x: m.x, z: m.z, facing: world.hero.facing });
+    world.damageEnemy(near, weapon.damage, weapon.knockback);
+    world.emit({ type: 'shotStopped', x: near.x, z: near.z, hit: true });
   },
 
-  /** The toy sniper: an instant shot along the aim, up to `range`, stopped by walls and trees; hits the first enemy on the line. */
+  /** The toy sniper: an instant shot from the barrel toward the target, up to `range`, stopped by walls and trees; hits the first enemy on the line. */
   beam(world, weapon) {
-    const { hero } = world;
-    const dx = Math.sin(hero.facing);
-    const dz = Math.cos(hero.facing);
-    const reach = world.rayLength(hero.x, hero.z, dx, dz, weapon.range);
+    const origin = world.muzzle(weapon);
+    const near = inBarrel(world, origin, 0.15);
+    if (near) {
+      world.emit({ type: 'heroShot', kind: 'beam', x: origin.x, z: origin.z, x1: near.x, z1: near.z, hit: true });
+      world.damageEnemy(near, weapon.damage, weapon.knockback);
+      return;
+    }
+    const angle = world.shotAngle(origin);
+    const dx = Math.sin(angle);
+    const dz = Math.cos(angle);
+    const reach = world.rayLength(origin.x, origin.z, dx, dz, weapon.range);
     let best = null;
     let bestT = Infinity;
     for (const enemy of world.activeEnemies()) {
-      const rx = enemy.x - hero.x;
-      const rz = enemy.z - hero.z;
+      const rx = enemy.x - origin.x;
+      const rz = enemy.z - origin.z;
       const t = rx * dx + rz * dz; // distance along the shot
       if (t < 0 || t > reach + enemy.radius) continue;
       if (Math.abs(rx * dz - rz * dx) > enemy.radius + 0.15) continue; // distance from the line
       if (t < bestT) [best, bestT] = [enemy, t];
     }
     const length = best ? Math.min(bestT, reach) : reach;
-    world.emit({ type: 'heroShot', kind: 'beam', x: hero.x, z: hero.z, x1: hero.x + dx * length, z1: hero.z + dz * length, hit: best !== null });
+    world.emit({ type: 'heroShot', kind: 'beam', x: origin.x, z: origin.z, x1: origin.x + dx * length, z1: origin.z + dz * length, hit: best !== null });
     if (best) world.damageEnemy(best, weapon.damage, weapon.knockback);
   },
 };

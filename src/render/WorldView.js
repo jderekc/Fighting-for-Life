@@ -12,6 +12,7 @@ import { cleanHeroName, DEFAULT_HERO_ID, HEROES } from '../data/heroes.js';
 import { NameTag } from './NameTag.js';
 import { Scenery } from './scenery/Scenery.js';
 
+const MUZZLE_Y = 1.25; // height of a gun barrel's tip above the ground (the arm is raised from the shoulder at 1.4)
 const BODY_RADIUS = 0.3; // how far from a character's center its body reaches, for standing on steps
 
 /**
@@ -142,7 +143,7 @@ export class WorldView {
         this.group.add(mesh);
         this.dartViews.set(d.id, mesh);
       }
-      mesh.position.set(d.x, 1.1 + world.grid.heightAt(d.x, d.z), d.z);
+      mesh.position.set(d.x, MUZZLE_Y + world.grid.heightAt(d.x, d.z), d.z);
     }
     for (const [id, mesh] of this.dartViews) {
       if (!liveDarts.has(id)) {
@@ -155,11 +156,11 @@ export class WorldView {
     const aim = world.aimTarget;
     this.aimLine.visible = world.state === 'playing' && aim !== null;
     if (this.aimLine.visible) {
-      const h = world.hero;
-      const dx = aim.x - h.x;
-      const dz = aim.z - h.z;
+      const from = world.muzzle(); // the line starts at the barrel tip, where the shot will
+      const dx = aim.x - from.x;
+      const dz = aim.z - from.z;
       const len = Math.hypot(dx, dz);
-      this.aimLine.position.set(h.x + dx / 2, 1.1 + (this.hero.groundY ?? 0), h.z + dz / 2);
+      this.aimLine.position.set(from.x + dx / 2, MUZZLE_Y + (this.hero.groundY ?? 0), from.z + dz / 2);
       this.aimLine.scale.set(0.09, 0.09, len);
       this.aimLine.rotation.y = Math.atan2(dx, dz);
       this.aimLine.material.opacity = 0.35 + 0.2 * Math.sin(this.clock * 12);
@@ -237,13 +238,13 @@ export class WorldView {
         break;
       }
       case 'heroShot': {
-        const y = 1.1 + this.world.grid.heightAt(ev.x, ev.z);
+        const y = MUZZLE_Y + this.world.grid.heightAt(ev.x, ev.z);
         if (ev.kind === 'beam') {
           this.effects.tracer(ev.x, ev.z, ev.x1, ev.z1, { y });
           this.effects.burst(ev.x1, ev.z1, { color: '#ff5a5a', count: ev.hit ? 8 : 3, up: 2, spread: 1.5, life: 0.3, y });
           this.hooks.shake?.(0.12, 0.2);
         } else {
-          this.effects.burst(ev.x + Math.sin(ev.facing) * 0.6, ev.z + Math.cos(ev.facing) * 0.6, { color: '#ffe14d', count: 3, up: 1, spread: 1, life: 0.2, y });
+          this.effects.burst(ev.x, ev.z, { color: '#ffe14d', count: 3, up: 1, spread: 1, life: 0.2, y }); // a muzzle flash right at the barrel tip
         }
         break;
       }

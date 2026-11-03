@@ -1,6 +1,6 @@
 // Balance report from scripted bots.
 //   node tools/balance.mjs difficulty        win rate / HP left / time per level at each difficulty step
-//   node tools/balance.mjs weapons [N]       every weapon on levels 1-3 at Normal (win rate / HP lost / time / coins)
+//   node tools/balance.mjs weapons [N] [id]  every weapon (or just `id`) on levels 1-3 at Normal (win rate / HP lost / time / coins)
 //   node tools/balance.mjs sensitivity [N]   which numbers move the outcome most (each varied x0.5 and x1.5), level 3 (and 2 for the Barchernarcher)
 // Bots are not children: read this as "which knob matters", not as a prediction of how she will do.
 import { ENEMIES } from '../src/data/enemies.js';
@@ -47,7 +47,7 @@ if (mode === 'difficulty') {
     for (const level of LEVELS.slice(0, 3)) console.log(`  L${level.id}  ${fmt(summarize(level, { difficulty: step }))}`);
   }
 } else if (mode === 'weapons') {
-  for (const id of WEAPON_IDS) {
+  for (const id of WEAPON_IDS.filter((x) => !process.argv[4] || x === process.argv[4])) { // optional 4th argument: just one weapon
     const w = WEAPONS[id];
     console.log(`
 ${w.name} (${id})`);

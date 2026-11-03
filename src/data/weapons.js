@@ -41,6 +41,9 @@ export const WEAPONS = Object.freeze({
     behavior: 'shoot',
     style: 'shoot',
     ...W.gun, // `range` is how far a dart flies, `dartSpeed` and `dartRadius`
+    // Where shots leave the barrel, measured from the hero's centre: `forward` along her facing and `side` toward her right hand
+    // (the gun is held in the right arm). Matches the model in render/blocky.js; tests/weapons.test.js checks the two agree.
+    muzzle: Object.freeze({ forward: 1.4, side: 0.375 }),
   }),
   sniper: Object.freeze({
     id: 'sniper',
@@ -50,6 +53,7 @@ export const WEAPONS = Object.freeze({
     style: 'shoot',
     aimLine: true, // the game draws a line to the enemy it will shoot
     ...W.sniper,
+    muzzle: Object.freeze({ forward: 1.7, side: 0.375 }), // see the gun
   }),
 });
 

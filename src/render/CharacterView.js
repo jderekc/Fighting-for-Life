@@ -6,7 +6,7 @@ import { createBlocky, createBow, createQuiver, HELD_WEAPONS, setEmissive } from
 
 const RAISED_ARM = -2.4; // overhead, ready to swing
 const IDLE_ARM = -0.35;
-const AIM_ARM = -1.45; // arm held straight out to aim a gun
+export const AIM_ARM = -1.45; // arm held straight out to aim a gun
 
 /**
  * Drives one blocky character from a sim object ({x, z, facing, state?}).
@@ -132,7 +132,7 @@ export class CharacterView {
         armR.rotation.x = lerp(-1.7, -0.3, eased);
         armL.rotation.x = lerp(-0.3, -1.7, Math.sin(t * Math.PI));
       } else if (this.style === 'shoot') {
-        armR.rotation.x = AIM_ARM + 0.45 * (1 - eased); // recoil kick, then settles
+        armR.rotation.x = AIM_ARM - 0.35 * (1 - eased); // recoil: the barrel kicks UP, then settles back
       } else {
         const angle = lerp(RAISED_ARM, -0.2, eased);
         armR.rotation.x = angle;

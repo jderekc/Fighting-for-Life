@@ -198,3 +198,69 @@ test('every weapon can finish a real level 1 fight (a bot that never dodges)', a
     assert.equal(w.state, 'won', `${id} should win level 1 at Normal`);
   }
 });
+
+test('knockback: daggers and the toy gun push nothing; the hammer and the sniper do', () => {
+  assert.equal(WEAPONS.dagger.knockback, 0);
+  assert.equal(WEAPONS.gun.knockback, 0);
+  assert.ok(WEAPONS.hammer.knockback > 0 && WEAPONS.sniper.knockback > 0);
+  const pushed = (id, spot) => {
+    const w = arena(id, [spot], noCrit, 'grunt', id === 'sniper' ? 11 : 0);
+    const z0 = w.enemies[0].z;
+    w.step(DT, ATTACK);
+    run(w, 0.6);
+    assert.ok(taken(w)[0] > 0, `${id} landed a hit`);
+    return Math.abs(w.enemies[0].z - z0);
+  };
+  assert.ok(pushed('dagger', [0, -1.2]) < 1e-9, 'daggers: no shove');
+  assert.ok(pushed('gun', [0, -4]) < 1e-9, 'gun: no shove');
+  assert.ok(pushed('sniper', [0, -2]) > 0.3, 'sniper: the target is knocked back');
+  assert.ok(pushed('hammer', [0, -1.5]) > 0.3, 'hammer: the target is thrown');
+});
+
+test('ranged shots leave the barrel, at the right hand and out in front, not the middle of the hero', () => {
+  const w = arena('gun', [[0, -6]]); // hero faces -z, so her right hand is +x
+  w.step(DT, ATTACK);
+  const dart = w.heroShots[0];
+  assert.ok(Math.abs(dart.x - 0.375) < 0.05, `starts at her right side (x ${dart.x})`);
+  assert.ok(dart.z < -1.35 && dart.z > -1.7, `and a barrel's length out front (z ${dart.z}; it has flown one step already)`);
+  assert.ok(dart.vx < 0, 'it turns in toward the enemy the aim picked');
+  run(w, 0.7);
+  assert.ok(taken(w)[0] > 0, 'and still hits it');
+  const s = arena('sniper', [[0, -2]], noCrit, 'grunt', 11);
+  s.step(DT, ATTACK);
+  const beam = s.drainEvents().find((e) => e.type === 'heroShot');
+  assert.ok(Math.abs(beam.x - 0.375) < 0.05 && Math.abs(beam.z - (11 - 1.7)) < 0.1, 'the tracer starts at the rifle tip');
+});
+
+test('point blank: an enemy standing at the barrel is hit at once, by the gun and by the sniper', () => {
+  for (const id of ['gun', 'sniper']) {
+    const w = arena(id, [[0, -0.9]]);
+    w.step(DT, ATTACK);
+    assert.ok(taken(w)[0] > 0, `${id} hits an enemy closer than its barrel is long`);
+    assert.equal(w.heroShots.length, 0, 'no dart was wasted beyond it');
+  }
+});
+
+test('a wall right in front of the hero: the barrel does not poke through it, shots start at the hero instead', () => {
+  const w = arena('gun', [[0, -6]]);
+  w.grid.block(w.grid.cellX(0.375), w.grid.cellZ(-1.4), 3);
+  const m = w.muzzle();
+  assert.deepEqual([m.x, m.z], [w.hero.x, w.hero.z]);
+  w.step(DT, ATTACK);
+  run(w, 0.6);
+  assert.equal(taken(w)[0], 0, 'the wall still stops the dart');
+});
+
+test('the muzzle numbers match the models: the barrel tip is where the weapon data says', async () => {
+  const { HELD_WEAPONS } = await import('../src/render/blocky.js');
+  const { AIM_ARM } = await import('../src/render/CharacterView.js');
+  const THREE = await import('three');
+  for (const id of ['gun', 'sniper']) {
+    const { right } = HELD_WEAPONS[id]();
+    right.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(right);
+    const alongArm = -box.min.y; // the tip's distance from the shoulder along the arm (the hand is 0.7 down it)
+    const forward = alongArm * Math.sin(-AIM_ARM); // the raised arm points forward
+    assert.ok(Math.abs(forward - WEAPONS[id].muzzle.forward) < 0.12, `${id}: model tip ${forward.toFixed(2)} vs data ${WEAPONS[id].muzzle.forward}`);
+  }
+});

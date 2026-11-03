@@ -11,9 +11,9 @@
   },
   "weapons": {
     "sword": { "damage": 10, "range": 2.0, "cooldown": 0.45, "swingTime": 0.25, "knockback": 4, "price": 500 },
-    "dagger": { "damage": 3, "range": 1.4, "cooldown": 0.25, "swingTime": 0.12, "knockback": 1, "hits": 2, "hitGap": 0.07, "price": 500 },
-    "hammer": { "damage": 45, "range": 2.2, "radius": 2.2, "cooldown": 1.1, "swingTime": 0.35, "windup": 0.35, "knockback": 7, "price": 500 },
-    "gun": { "damage": 7, "range": 7, "cooldown": 0.35, "swingTime": 0.15, "knockback": 1.5, "dartSpeed": 14, "dartRadius": 0.12, "price": 500 },
+    "dagger": { "damage": 3, "range": 1.4, "cooldown": 0.25, "swingTime": 0.12, "knockback": 0, "hits": 2, "hitGap": 0.07, "price": 500 },
+    "hammer": { "damage": 45, "range": 2.2, "radius": 2.2, "cooldown": 1.27, "swingTime": 0.4, "windup": 0.4, "knockback": 7, "price": 500 },
+    "gun": { "damage": 10, "range": 7, "cooldown": 0.35, "swingTime": 0.15, "knockback": 0, "dartSpeed": 14, "dartRadius": 0.12, "price": 500 },
     "sniper": { "damage": 45, "range": 16, "cooldown": 1.6, "swingTime": 0.2, "knockback": 3, "price": 500 }
   },
   "tradeIn": { "refund": 0.25 },

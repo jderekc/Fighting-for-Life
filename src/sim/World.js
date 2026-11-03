@@ -44,6 +44,7 @@ export class World {
     this.heroShots = []; // the hero's darts in flight: { id, x, z, vx, vz, radius, damage, knockback, life }
     this.scheduled = []; // later effects of an attack (a dagger's second hit, the hammer's slam): { at, run }
     this.aimTarget = null; // the enemy a sniper would shoot right now (for the aim line)
+    this.attackTarget = null; // the enemy the latest attack was aimed at (ranged shots head for it from the barrel)
     this.weapon = getWeapon(weaponId);
     this.rng = mulberry32(seed);
     this.time = 0;
@@ -295,6 +296,27 @@ export class World {
     return nearestTarget(this.hero, awake, reach) ?? nearestTarget(this.hero, this.activeEnemies(), reach);
   }
 
+  /**
+   * Where a ranged weapon's shots leave: the tip of the barrel (`weapon.muzzle`, relative to the hero's facing), or the hero's centre
+   * when the weapon has none or the barrel would poke into a wall or tree.
+   */
+  muzzle(weapon = this.weapon) {
+    const h = this.hero;
+    const m = weapon.muzzle;
+    if (!m) return { x: h.x, z: h.z };
+    const s = Math.sin(h.facing);
+    const c = Math.cos(h.facing);
+    const x = h.x + s * m.forward - c * m.side; // her right hand is (-cos, sin) of her facing
+    const z = h.z + c * m.forward + s * m.side;
+    return this.grid.lineClear(h.x, h.z, x, z, 0, SIGHT) ? { x, z } : { x: h.x, z: h.z };
+  }
+
+  /** The direction (radians) a shot leaving `from` takes: at the enemy the attack was aimed at, else straight along the hero's facing. */
+  shotAngle(from) {
+    const t = this.attackTarget;
+    return t && !t.dead ? angleTo(from.x, from.z, t.x, t.z) : this.hero.facing;
+  }
+
   /** How far a straight line from (x, z) along (dx, dz) runs before a wall or tree stops it, up to `max` (water does not stop it). */
   rayLength(x, z, dx, dz, max, step = 0.25) {
     let clear = 0;
@@ -338,6 +360,7 @@ export class World {
     // Auto-aim: face the nearest enemy within reach plus some assist.
     // Real enemies first: a sleeping rock only gets the swing when nothing else is in reach.
     const target = this.pickTarget();
+    this.attackTarget = target;
     if (target) h.facing = angleTo(h.x, h.z, target.x, target.z);
 
     h.attackCooldown = w.cooldown;
@@ -452,24 +475,23 @@ export class World {
     if (gained > 0) this.hero.health.current += gained;
   }
 
-  /** The toy gun: a dart leaves the hero along `facing`. It stops at walls and trees and at the first enemy it touches. */
+  /** The toy gun: a dart leaves the barrel tip toward the target. It stops at walls and trees and at the first enemy it touches. */
   fireDart(weapon) {
-    const h = this.hero;
-    const dx = Math.sin(h.facing);
-    const dz = Math.cos(h.facing);
+    const m = this.muzzle(weapon);
+    const a = this.shotAngle(m);
     const dart = {
       id: this.nextId(),
-      x: h.x,
-      z: h.z,
-      vx: dx * weapon.dartSpeed,
-      vz: dz * weapon.dartSpeed,
+      x: m.x,
+      z: m.z,
+      vx: Math.sin(a) * weapon.dartSpeed,
+      vz: Math.cos(a) * weapon.dartSpeed,
       radius: weapon.dartRadius,
       damage: weapon.damage,
       knockback: weapon.knockback,
       life: weapon.range / weapon.dartSpeed,
     };
     this.heroShots.push(dart);
-    this.emit({ type: 'heroShot', kind: 'dart', id: dart.id, x: dart.x, z: dart.z, facing: h.facing });
+    this.emit({ type: 'heroShot', kind: 'dart', id: dart.id, x: dart.x, z: dart.z, facing: a });
   }
 
   /** Darts move in short steps (so a fast one cannot skip over a thin enemy), stop at walls, and hit the first enemy in the way. */

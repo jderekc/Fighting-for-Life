@@ -165,10 +165,10 @@ Rules of the road:
   (`options.perks`, `options.startCoins`). The profile carries `weapon` (default 'sword'; `weaponOf` defaults old-style profiles) and a flat `tiers` map
   holding the current weapon's tiers plus the global ones.
 - **Weapons (M2, built).** `WEAPONS` in `src/data/weapons.js` (numbers in stats.json `weapons.<id>`, every `price` is 500): `sword` (10 dmg, 0.45 s, arc, knockback 4),
-  `dagger` Shin-kai Daggers (3 dmg x 2 hits 0.07 s apart per press, 0.25 s, reach 1.4, knockback 1, narrow arc), `hammer` Mjolnir Hammer (slam 0.35 s after the press,
-  45 dmg to everything within radius 2.2 edge to edge in all directions, 1.1 s cooldown, knockback 7, walls shelter, ring + screen shake), `gun` Toy Gun (dart 7 dmg,
-  speed 14, range 7, 0.35 s, stops at walls and at the first enemy), `sniper` Toy Sniper (instant beam 45 dmg, range 16, 1.6 s, first enemy on the line, walls block it, red aim
-  line to the target). A grunt (40 HP, 10% armor) falls to one hammer slam or one sniper shot. `weaponBehaviors.js`: `meleeArc` (with `hits`/`hitGap`), `slam`, `shoot`, `beam`.
+  `dagger` Shin-kai Daggers (3 dmg x 2 hits 0.07 s apart per press, 0.25 s, reach 1.4, **no knockback**, narrow arc), `hammer` Mjolnir Hammer (slam 0.4 s after the press,
+  45 dmg to everything within radius 2.2 edge to edge in all directions, 1.27 s cooldown, knockback 7, walls shelter, ring + screen shake; the owner asked for it ~15% slower than the first 0.35/1.1 s), `gun` Toy Gun (dart 10 dmg (was 7 before the no-knockback rule),
+  speed 14, range 7, 0.35 s, **no knockback**, stops at walls and at the first enemy), `sniper` Toy Sniper (instant beam 45 dmg, range 16, 1.6 s, knockback 3, first enemy on the line, walls block it, red aim
+  line from the barrel to the target). A grunt (40 HP, 10% armor) falls to one hammer slam or one sniper shot. `weaponBehaviors.js`: `meleeArc` (with `hits`/`hitGap`), `slam`, `shoot`, `beam`.
   `World.schedule(delay, fn)` runs the later parts of an attack (second dagger hit, the slam); `world.heroShots` are the darts; `world.aimTarget` is the sniper's line target;
   `world.setWeapon(id)` swaps mid-fight (drops half-finished attacks, emits `weaponChanged`). New events: `heroSlam`, `heroShot` (`kind: 'dart'|'beam'`), `shotStopped`.
   Each weapon has its own three upgrades (own effects and prices; sword/dagger: sharpen, luck, power; hammer: bigger slam (+0.4 radius/tier), luck, power; gun/sniper: sharper
@@ -178,11 +178,14 @@ Rules of the road:
   the price goes into the wallet. The shop panel shows a "Holding: ..." row with the other four weapons priced after the credit (click, or keys 6-9; `Game.swap`).
   The title screen has the free first pick (`withStartWeapon`, cards in `Screens.weaponPicker`, icons `ui/weaponIcons.js`). The shop is the last level, so a swap there
   applies to the next run. `Game.weaponId` is read from `profile.weapon` (no hard-coded weapon); the title flyover hero keeps a sword.
+- **Muzzle:** gun and sniper shots start at the barrel tip, not the hero's centre: `weapon.muzzle = {forward, side}` (gun 1.4/0.375, sniper 1.7/0.375; the gun is in the right arm), `World.muzzle()`
+  (falls back to the hero's centre when the barrel would poke into a wall), shots head from there toward `world.attackTarget` (`shotAngle`), and an enemy standing inside the barrel is hit at once (`inBarrel`).
+  A test builds the real model and checks the tip matches `muzzle.forward`; if you change a model's size, change the number. The aim line starts at the muzzle. Recoil kicks the barrel up.
 - **Render side:** `blocky.js HELD_WEAPONS` (one builder per weapon id; daggers come in a pair), `CharacterView({ weapon })`/`setWeapon` with a `style` per weapon
   (`swing`, `stab`, `slam`, `shoot`), `Effects.ring/tracer`, `ArrowView.createDartMesh`, `WorldView` hooks `{ shake }` and the aim line.
-- **Bot findings (`node tools/balance.mjs weapons`, 20 seeds, Normal, never dodges; HP lost L1/L2/L3):** sword 10/34/47, dagger 20/0/16 (the fast hits keep grunts staggered and
-  break the bosses' poise: it is the strongest melee weapon), hammer 60/34/60 (all wins, but it is vulnerable during its windup: the hardest weapon on level 1), gun 10/26/57,
-  sniper 10/5/85 (90% on L3: strong against approaching enemies, weak against the elite's armor and crowds). First-pass numbers; the bot does not kite or dodge.
+- **Bot findings (`node tools/balance.mjs weapons`, 20 seeds, Normal, never dodges; HP lost L1/L2/L3):** sword 10/34/47, dagger 11/10/23 (no knockback now, so it is weaker than before but still the best melee weapon),
+  hammer 60/83/115 (L3 win 65%: vulnerable during its slower windup), gun 0/7/63 after raising its damage 7 -> 10 (40 seeds, L3 win 98%; at 7 it lost 27/41/105 with 50% on L3, because without knockback the dart does not keep grunts off), sniper 0/5/91 (95% on L3: strong against approaching enemies,
+  weak against the elite's armor and crowds). These are consequences of the owner's no-knockback and slower-hammer rules; the bot does not kite or dodge. Candidate fix if the hammer proves too hard: damage/radius up.
 - **Grunts have 0.1 armor** (owner's call, for armor piercing to matter): a sword hit does 9, a grunt takes 5 hits not 4 (it was 4). Bot sweep (20 seeds, noisy):
   Normal L1/L2/L3 HP lost 10/34/47 (was 10/13/33); Hard L3 win 65% (was 85%). The L2 jump is mostly noise (Hard L2 went down), so retune only after more seeds.
   Prices (150..700) were set against the ~1,700 coins; you cannot afford everything on the first pass.
